@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 env:
-  FLUTTER_VERSION: 3.24.x
+  FLUTTER_VERSION: 3.44.x
   ORG_ID: live.kadenz
 
 jobs:
