@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security disclosure
+    url: https://github.com/kadenz-live/kadenz-scanner/security/advisories/new
+    about: |
+      Found a vulnerability? Do NOT open a public issue with details. Use GitHub
+      Private vulnerability reporting here. See SECURITY.md.
+  - name: Kadenz product site
+    url: https://kadenz.live
+    about: Public site, FAQ and support for non-engineering questions.

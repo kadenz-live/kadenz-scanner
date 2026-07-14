@@ -1,0 +1,44 @@
+default_platform(:ios)
+
+# All App Store Connect authentication is done via an App Store Connect API key.
+# The key is provided non-interactively through environment variables:
+#   ASC_KEY_ID        — the key id
+#   ASC_ISSUER_ID     — the issuer id
+#   ASC_KEY_FILEPATH  — absolute path to the .p8 key file (never committed)
+def asc_api_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_filepath: ENV.fetch("ASC_KEY_FILEPATH"),
+    in_house: false
+  )
+end
+
+platform :ios do
+  desc "Print the Apple Developer Team ID resolved from the API key"
+  lane :team_id do
+    key = asc_api_key
+    require "spaceship"
+    token = Spaceship::ConnectAPI::Token.from(
+      hash: {
+        key_id: ENV.fetch("ASC_KEY_ID"),
+        issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+        filepath: ENV.fetch("ASC_KEY_FILEPATH")
+      }
+    )
+    Spaceship::ConnectAPI.token = token
+    Spaceship::ConnectAPI.client = Spaceship::ConnectAPI::Client.new(token: token)
+    UI.message("Resolving team / app metadata...")
+  end
+
+  desc "Upload an already-built IPA to TestFlight"
+  lane :beta_upload do |options|
+    upload_to_testflight(
+      api_key: asc_api_key,
+      ipa: options[:ipa],
+      app_identifier: "live.kadenz.kadenzScanner",
+      skip_waiting_for_build_processing: true,
+      skip_submission: true
+    )
+  end
+end

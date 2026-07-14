@@ -1,0 +1,191 @@
+name: Release
+
+# Release lane for the Kadenz Scanner. Fires on an `app-v*` tag (or manual
+# dispatch) and ships builds — it does NOT run tests (ci.yml covers that).
+#
+# How to cut a release:
+#   git tag app-v1.17.6 && git push origin app-v1.17.6
+#
+# Required GitHub secrets (App Store Connect API key, non-interactive):
+#   APP_STORE_CONNECT_API_KEY_ID      — the key id     (e.g. ABC123XYZ9)
+#   APP_STORE_CONNECT_ISSUER_ID       — the issuer id  (UUID)
+#   APP_STORE_CONNECT_API_KEY_BASE64  — base64 of the .p8 private key
+#     (generate with: base64 -i AuthKey_XXXX.p8 | pbcopy)
+# Optional (Android Play Store, see the `android` job):
+#   PLAY_STORE_SERVICE_ACCOUNT_JSON   — Play Console service-account JSON
+#
+# NOTE: fork PRs never see these secrets (GitHub withholds them from forked
+# workflow runs). Releases are cut from tags pushed by a maintainer.
+#
+# The fastlane scaffolding lives in `_native_overrides/ios/fastlane` and is
+# installed into `ios/fastlane` by `./setup.sh`.
+
+on:
+  push:
+    tags:
+      - "app-v*"
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "iOS build number override (defaults to the run number)"
+        required: false
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.44.x
+  ORG_ID: live.kadenz
+
+jobs:
+  ios-testflight:
+    name: iOS — build + upload to TestFlight
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Generate native iOS/Android projects + fastlane overlay
+        run: ./setup.sh
+        env:
+          ORG_ID: ${{ env.ORG_ID }}
+
+      - name: Determine build number
+        id: buildno
+        run: |
+          BN="${{ github.event.inputs.build_number }}"
+          if [ -z "$BN" ]; then
+            BN="${{ github.run_number }}"
+          fi
+          echo "build_number=$BN" >> "$GITHUB_OUTPUT"
+          echo "Using iOS build number: $BN"
+
+      - name: Build IPA and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          BUILD_NUMBER: ${{ steps.buildno.outputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ASC_KEY_ID:-}" ] || [ -z "${ASC_ISSUER_ID:-}" ] || [ -z "${ASC_KEY_BASE64:-}" ]; then
+            echo "::error::App Store Connect API key secrets are not all set" >&2
+            exit 1
+          fi
+
+          # Decode the .p8 to a temp file and guarantee it is wiped on any exit.
+          ASC_KEY_FILEPATH="${RUNNER_TEMP}/asc_api_key.p8"
+          export ASC_KEY_FILEPATH
+          trap 'rm -f "$ASC_KEY_FILEPATH"' EXIT
+          printf '%s' "$ASC_KEY_BASE64" | base64 --decode > "$ASC_KEY_FILEPATH"
+          chmod 600 "$ASC_KEY_FILEPATH"
+
+          # AOT-hardened release build (--obfuscate + --split-debug-info +
+          # --tree-shake-icons). Symbols are uploaded as an artifact below so
+          # crash reports can be de-obfuscated later.
+          flutter build ipa \
+            --release \
+            --obfuscate \
+            --split-debug-info=build/symbols/ios \
+            --tree-shake-icons \
+            --build-number "$BUILD_NUMBER" \
+            --dart-define=KADENZ_API=https://kadenz.live \
+            --export-options-plist ios/ExportOptions.plist
+
+          IPA_PATH="$(find build/ios/ipa -name '*.ipa' | head -n1)"
+          if [ -z "$IPA_PATH" ]; then
+            echo "::error::No .ipa produced by flutter build ipa" >&2
+            exit 1
+          fi
+          echo "Uploading IPA: $IPA_PATH"
+
+          # Reuse the fastlane `beta_upload` lane. It calls upload_to_testflight
+          # with skip_waiting_for_build_processing: true and authenticates via
+          # the ASC_* env vars above. fastlane ships preinstalled on GitHub
+          # macOS runners.
+          ABS_IPA="$(cd "$(dirname "$IPA_PATH")" && pwd)/$(basename "$IPA_PATH")"
+          ( cd ios && fastlane ios beta_upload ipa:"$ABS_IPA" )
+
+      - name: Upload iOS Dart symbols (for crash-report de-obfuscation)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: kadenz-scanner-ios-dart-symbols
+          path: build/symbols/ios/
+          if-no-files-found: warn
+          retention-days: 90
+
+  android:
+    name: Android — build app bundle (artifact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9  # v4.8.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - run: flutter pub get
+
+      - name: Generate native projects
+        run: ./setup.sh
+        env:
+          ORG_ID: ${{ env.ORG_ID }}
+
+      - name: Build release app bundle (.aab)
+        run: |
+          flutter build appbundle \
+            --release \
+            --obfuscate \
+            --split-debug-info=build/symbols/android \
+            --tree-shake-icons \
+            --build-number "${{ github.run_number }}" \
+            --dart-define=KADENZ_API=https://kadenz.live
+
+      - name: Upload .aab as workflow artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: kadenz-scanner-aab
+          path: build/app/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Android Dart symbols (for crash-report de-obfuscation)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: kadenz-scanner-android-dart-symbols
+          path: build/symbols/android/
+          if-no-files-found: warn
+          retention-days: 90
+
+      # TODO: Play Store upload is not wired yet — needs the app published once
+      # manually in the Play Console and a PLAY_STORE_SERVICE_ACCOUNT_JSON
+      # secret. Gated on that secret so it stays a no-op until configured.
+      - name: Check Play Store upload readiness
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "${PLAY_JSON:-}" ]; then
+            echo "PLAY_STORE_SERVICE_ACCOUNT_JSON not set — skipping Play Store upload (TODO)."
+            exit 0
+          fi
+          echo "Service-account secret present, but Play Store upload is not implemented yet (TODO)."

@@ -1,0 +1,91 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Kadenz Scanner",
+
+  "loginTitle": "Validator",
+  "loginServer": "Server: {url}",
+  "loginEmail": "Email",
+  "loginPassword": "Password",
+  "loginButton": "Sign in",
+  "loginErrorConnection": "Connection failed: {error}",
+  "loginApiUnreachableBannerTitle": "Server unreachable",
+  "loginApiUnreachableBannerBody": "The scanner cannot reach {url}. Check the connection or change the server in settings.",
+  "@loginApiUnreachableBannerBody": {
+    "placeholders": {
+      "url": { "type": "String" }
+    }
+  },
+
+  "settingsTitle": "Settings",
+  "settingsApiBaseUrl": "API Base URL",
+  "settingsApiBaseUrlHint": "https://kadenz.live",
+  "settingsApiBaseUrlTips": "Production: https://kadenz.live (default)\nLocal dev (iOS Sim): http://localhost:3000\nLocal dev (Android Emu): http://10.0.2.2:3000",
+  "settingsApiBaseUrlLockedByEnv": "API URL is locked by the build (--dart-define=KADENZ_API).",
+  "settingsApiResolvedTitle": "Currently used",
+  "settingsApiSourceEnv": "Source: build env (--dart-define)",
+  "settingsApiSourceStored": "Source: stored override",
+  "settingsApiSourceDefault": "Source: default",
+  "settingsSave": "Save",
+  "settingsLicenses": "Open-source licenses",
+
+  "eventPickerTitle": "Select event",
+  "eventPickerLoadError": "Could not load events:\n{error}",
+  "eventPickerRetry": "Try again",
+  "eventPickerEmpty": "No upcoming events.",
+  "eventPickerAnyTitle": "Scan any event",
+  "eventPickerAnySubtitle": "Server validates event assignment from ticket.",
+  "eventPickerCheckedIn": "{used}/{total} checked in",
+
+  "scannerAnyEvent": "Any event",
+  "scannerTooltipTorch": "Torch",
+  "scannerTooltipCamera": "Switch camera",
+  "scannerNetworkError": "Network error",
+  "scannerHudCheckedIn": "{used} / {total} checked in",
+  "@scannerHudCheckedIn": {
+    "placeholders": {
+      "used": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "scannerHudCounted": "{count} scanned",
+  "@scannerHudCounted": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "scannerHistoryTitle": "Recent",
+  "scannerTooltipManualEntry": "Manual code entry",
+  "scannerManualEntryTitle": "Manual code entry",
+  "scannerManualEntryHelp": "Type the printed code (TIX-XXXXXXXX) and tap Validate.",
+  "scannerManualEntryHint": "TIX-XXXXXXXX",
+  "scannerManualEntryCancel": "Cancel",
+  "scannerManualEntryValidate": "Validate",
+
+  "scannerStatusOk": "OK",
+  "scannerStatusAlreadyUsed": "ALREADY USED",
+  "scannerStatusVoid": "VOID",
+  "scannerStatusNotFound": "UNKNOWN TICKET",
+  "scannerStatusNetworkError": "NO NETWORK",
+  "scannerStatusUnknown": "ERROR",
+
+  "offlineMenuPrepare": "Prepare offline mode",
+  "offlineMenuEnter": "Start offline mode",
+  "offlineMenuExit": "Exit offline mode",
+  "offlineMenuReconcile": "Reconcile ({count})",
+  "offlineBannerStatus": "OFFLINE – {count} scans queued",
+  "offlineBannerManifest": "Manifest: {datetime}",
+  "offlineBannerReconcile": "Reconcile",
+  "offlineSnackManifestLoaded": "Offline manifest loaded: {count} tickets",
+  "offlineSnackSyncFailed": "Sync failed: {error}",
+  "offlineSnackReconcileFailed": "Reconcile failed: {error}",
+
+  "reconcileTitle": "Reconcile complete",
+  "reconcileSummary": "{accepted} accepted · {conflicts} conflict(s)",
+  "reconcileNoConflicts": "No conflicts — all offline scans accepted.",
+  "reconcileConflictTicket": "Ticket {code}",
+  "reconcileConflictDevices": "Device {deviceA} {timeA} / Device {deviceB}",
+  "reconcileReasonAlreadyUsed": "Double scan",
+  "reconcileReasonNotEligible": "Ticket not eligible",
+  "reconcileReasonUnknown": "Unknown ticket"
+}

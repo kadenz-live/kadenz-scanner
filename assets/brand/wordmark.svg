@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" width="800" height="240">
+  <style>
+    .wm { font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif; font-weight: 700; }
+    .tag { font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif; font-weight: 400; }
+  </style>
+  <text x="400" y="150" text-anchor="middle" font-size="160" class="wm" fill="#ffffff">Kadenz</text>
+  <text x="400" y="210" text-anchor="middle" font-size="32" class="tag" fill="#ffffff" opacity="0.65" letter-spacing="6">EINLASSKONTROLLE</text>
+</svg>

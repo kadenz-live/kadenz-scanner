@@ -1,0 +1,16 @@
+# Lint rules for the Kadenz Scanner.
+# `flutter analyze` is run in CI with --fatal-warnings --fatal-infos, so every
+# lint below is effectively an error gate.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # Treat unused imports/code as errors locally too (CI already fails on them).
+    unused_import: error
+    dead_code: error
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_final_locals: true
+    avoid_print: true

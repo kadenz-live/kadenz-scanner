@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least-privilege: flutter analyze + test only. No write surfaces.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: flutter analyze + test
+    # GitHub-hosted runner: this is a public repository, so standard runners
+    # are free with no minute cap, and fork PRs run safely in an isolated
+    # sandbox (no access to repo secrets).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
+        with:
+          flutter-version: 3.44.x
+          channel: stable
+          cache: true
+      - name: Materialise native projects
+        run: |
+          flutter create \
+            --project-name kadenz_scanner \
+            --org com.example \
+            --platforms ios,android \
+            --no-overwrite \
+            .
+      - run: flutter pub get
+      - name: OSV-Scanner — check pubspec.lock for known CVEs
+        # Run osv-scanner as a release-pinned, SHA256-verified host binary
+        # (not the Docker action) so it works on any runner. Exits non-zero
+        # when a known CVE matches pubspec.lock.
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/osv-scanner" \
+            https://github.com/google/osv-scanner/releases/download/v1.9.0/osv-scanner_linux_amd64
+          echo "d9c1deedc23372a25049458e1e2f2bb9ad4098e2e2038118b9fec42f28f93ffb  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          "$RUNNER_TEMP/osv-scanner" --lockfile=pubspec.lock
+      - run: flutter analyze --fatal-warnings --fatal-infos
+      - name: Run tests with coverage
+        run: flutter test --coverage --reporter expanded
