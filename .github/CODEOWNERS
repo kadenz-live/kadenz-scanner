@@ -1,0 +1,4 @@
+# CODEOWNERS — automatically requests reviewers on every pull request.
+# Requires branch protection with "Require review from Code Owners" enabled.
+
+* @yves-vogl

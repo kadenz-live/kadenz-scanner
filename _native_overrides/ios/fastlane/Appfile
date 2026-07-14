@@ -1,0 +1,6 @@
+app_identifier("live.kadenz.kadenzScanner")
+
+# App Store Connect API key — referenced by path/ENV, never inlined.
+# Set these in the environment before running fastlane:
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_FILEPATH
+# The .p8 key file is sensitive and MUST NOT be committed.

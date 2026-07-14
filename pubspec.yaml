@@ -1,0 +1,62 @@
+name: kadenz_scanner
+description: Kadenz — QR validator for staff at the door.
+publish_to: "none"
+version: 1.17.5+12
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.9
+  crypto: ^3.0.7
+  http: ^1.6.0
+  mobile_scanner: ^4.0.1
+  shared_preferences: ^2.5.5
+  flutter_secure_storage: ^9.2.4
+  intl: ^0.20.2
+  permission_handler: ^11.4.0
+  audioplayers: ^5.2.1
+
+dev_dependencies:
+  flutter_lints: ^3.0.2
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
+  mocktail: ^1.0.5
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/
+    - assets/brand/
+    - assets/sounds/
+
+# App icon source — single 1024×1024 PNG → iOS AppIcon set + Android adaptive icon.
+# Re-run after editing the source: `dart run flutter_launcher_icons`.
+flutter_launcher_icons:
+  image_path: "assets/brand/icon_1024.png"
+  ios: true
+  remove_alpha_ios: true
+  android: "launcher_icon"
+  min_sdk_android: 21
+  adaptive_icon_background: "#7C3AED"
+  adaptive_icon_foreground: "assets/brand/icon_1024.png"
+
+# Native splash — iOS LaunchImage + Android 12+ Window splash.
+# Background matches the in-app SplashScreen so transition is seamless.
+# Re-run after editing: `dart run flutter_native_splash:create`.
+flutter_native_splash:
+  color: "#7C3AED"
+  image: "assets/brand/splash_logo.png"
+  android_12:
+    image: "assets/brand/splash_logo.png"
+    icon_background_color: "#7C3AED"
+  ios_content_mode: center
+  fullscreen: false

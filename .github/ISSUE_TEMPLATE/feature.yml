@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a new capability or an improvement to the Kadenz Scanner.
+title: "feat: <short summary>"
+labels: ["category:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please open a feature request before sending a large PR, so we can agree
+        on scope first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that is hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the scanner do? Sketch the behaviour.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "P1 — important"
+        - "P2 — nice to have"
+        - "P3 — someday / maybe"
+      default: 1
+    validations:
+      required: true

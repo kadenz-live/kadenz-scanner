@@ -1,0 +1,160 @@
+{
+  "@@locale": "de",
+
+  "appTitle": "Kadenz Scanner",
+
+  "loginTitle": "Validator",
+  "loginServer": "Server: {url}",
+  "@loginServer": {
+    "placeholders": {
+      "url": { "type": "String" }
+    }
+  },
+  "loginEmail": "E-Mail",
+  "loginPassword": "Passwort",
+  "loginButton": "Anmelden",
+  "loginErrorConnection": "Verbindung fehlgeschlagen: {error}",
+  "@loginErrorConnection": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "loginApiUnreachableBannerTitle": "Server nicht erreichbar",
+  "loginApiUnreachableBannerBody": "Der Scanner erreicht {url} nicht. Verbindung prüfen oder Server in den Einstellungen ändern.",
+  "@loginApiUnreachableBannerBody": {
+    "placeholders": {
+      "url": { "type": "String" }
+    }
+  },
+
+  "settingsTitle": "Einstellungen",
+  "settingsApiBaseUrl": "API-Basis-URL",
+  "settingsApiBaseUrlHint": "https://kadenz.live",
+  "settingsApiBaseUrlTips": "Produktion: https://kadenz.live (Standard)\nLokale Entwicklung (iOS-Sim): http://localhost:3000\nLokale Entwicklung (Android-Emu): http://10.0.2.2:3000",
+  "settingsApiBaseUrlLockedByEnv": "Die API-URL ist durch den Build festgelegt (--dart-define=KADENZ_API).",
+  "settingsApiResolvedTitle": "Aktuell verwendet",
+  "settingsApiSourceEnv": "Quelle: Build-Env (--dart-define)",
+  "settingsApiSourceStored": "Quelle: gespeicherter Override",
+  "settingsApiSourceDefault": "Quelle: Standard",
+  "settingsSave": "Speichern",
+  "settingsLicenses": "Open-Source-Lizenzen",
+
+  "eventPickerTitle": "Event auswählen",
+  "eventPickerLoadError": "Konnte Events nicht laden:\n{error}",
+  "@eventPickerLoadError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "eventPickerRetry": "Erneut versuchen",
+  "eventPickerEmpty": "Keine kommenden Events.",
+  "eventPickerAnyTitle": "Beliebiges Event scannen",
+  "eventPickerAnySubtitle": "Server validiert die Event-Zuordnung anhand des Tickets.",
+  "eventPickerCheckedIn": "{used}/{total} eingecheckt",
+  "@eventPickerCheckedIn": {
+    "placeholders": {
+      "used": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+
+  "scannerAnyEvent": "Beliebiges Event",
+  "scannerTooltipTorch": "Taschenlampe",
+  "scannerTooltipCamera": "Kamera wechseln",
+  "scannerNetworkError": "Netzwerkfehler",
+  "scannerHudCheckedIn": "{used} / {total} eingecheckt",
+  "@scannerHudCheckedIn": {
+    "placeholders": {
+      "used": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "scannerHudCounted": "{count} gescannt",
+  "@scannerHudCounted": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "scannerHistoryTitle": "Zuletzt",
+  "scannerTooltipManualEntry": "Code manuell eingeben",
+  "scannerManualEntryTitle": "Code manuell eingeben",
+  "scannerManualEntryHelp": "Aufgedruckten Code (TIX-XXXXXXXX) eingeben und auf Prüfen tippen.",
+  "scannerManualEntryHint": "TIX-XXXXXXXX",
+  "scannerManualEntryCancel": "Abbrechen",
+  "scannerManualEntryValidate": "Prüfen",
+
+  "scannerStatusOk": "OK",
+  "scannerStatusAlreadyUsed": "BEREITS GENUTZT",
+  "scannerStatusVoid": "UNGÜLTIG",
+  "scannerStatusNotFound": "UNBEKANNT",
+  "scannerStatusNetworkError": "KEIN NETZ",
+  "scannerStatusUnknown": "FEHLER",
+
+  "offlineMenuPrepare": "Offline-Modus vorbereiten",
+  "offlineMenuEnter": "Offline-Modus starten",
+  "offlineMenuExit": "Offline-Modus verlassen",
+  "offlineMenuReconcile": "Abgleichen ({count})",
+  "@offlineMenuReconcile": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "offlineBannerStatus": "OFFLINE – {count} Scans in Warteschlange",
+  "@offlineBannerStatus": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "offlineBannerManifest": "Manifest: {datetime}",
+  "@offlineBannerManifest": {
+    "placeholders": {
+      "datetime": { "type": "String" }
+    }
+  },
+  "offlineBannerReconcile": "Abgleichen",
+  "offlineSnackManifestLoaded": "Offline-Manifest geladen: {count} Tickets",
+  "@offlineSnackManifestLoaded": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "offlineSnackSyncFailed": "Sync fehlgeschlagen: {error}",
+  "@offlineSnackSyncFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "offlineSnackReconcileFailed": "Abgleich fehlgeschlagen: {error}",
+  "@offlineSnackReconcileFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "reconcileTitle": "Abgleich abgeschlossen",
+  "reconcileSummary": "{accepted} übernommen · {conflicts} Konflikt(e)",
+  "@reconcileSummary": {
+    "placeholders": {
+      "accepted": { "type": "int" },
+      "conflicts": { "type": "int" }
+    }
+  },
+  "reconcileNoConflicts": "Keine Konflikte – alle Offline-Scans übernommen.",
+  "reconcileConflictTicket": "Ticket {code}",
+  "@reconcileConflictTicket": {
+    "placeholders": {
+      "code": { "type": "String" }
+    }
+  },
+  "reconcileConflictDevices": "Gerät {deviceA} {timeA} / Gerät {deviceB}",
+  "@reconcileConflictDevices": {
+    "placeholders": {
+      "deviceA": { "type": "String" },
+      "timeA": { "type": "String" },
+      "deviceB": { "type": "String" }
+    }
+  },
+  "reconcileReasonAlreadyUsed": "Doppel-Scan",
+  "reconcileReasonNotEligible": "Ticket nicht gültig",
+  "reconcileReasonUnknown": "Unbekanntes Ticket"
+}
