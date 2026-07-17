@@ -6,6 +6,13 @@ project aims to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Bumped `audioplayers` from `^5.2.1` to `^6.8.1` so `audioplayers_android`
+  compiles against Android API 34+ (was API 33), fixing the release
+  `appbundle` build failing at `checkReleaseAarMetadata` against its own
+  `androidx` transitive dependencies.
+
 ## [1.17.6] - 2026-07-17
 
 ### Added
