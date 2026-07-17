@@ -1,7 +1,7 @@
 name: kadenz_scanner
 description: Kadenz — QR validator for staff at the door.
 publish_to: "none"
-version: 1.17.5+12
+version: 1.17.6+13
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

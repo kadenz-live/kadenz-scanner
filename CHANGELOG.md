@@ -6,6 +6,8 @@ project aims to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.6] - 2026-07-17
+
 ### Added
 
 - Public open-source release of the Kadenz ticket-validation client, extracted
@@ -19,4 +21,5 @@ project aims to follow [Semantic Versioning](https://semver.org/).
   alone (circle-safe for the Android 12 splash mask), and the pre-brand
   `icon_source.svg` "K" tile is replaced by the flat ticket-mark tile.
 
-[Unreleased]: https://github.com/kadenz-live/kadenz-scanner/commits/main
+[Unreleased]: https://github.com/kadenz-live/kadenz-scanner/compare/app-v1.17.6...HEAD
+[1.17.6]: https://github.com/kadenz-live/kadenz-scanner/releases/tag/app-v1.17.6
