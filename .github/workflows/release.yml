@@ -11,6 +11,25 @@ name: Release
 #   APP_STORE_CONNECT_ISSUER_ID       — the issuer id  (UUID)
 #   APP_STORE_CONNECT_API_KEY_BASE64  — base64 of the .p8 private key
 #     (generate with: base64 -i AuthKey_XXXX.p8 | pbcopy)
+#
+# Required GitHub secrets (code signing — the runner is a fresh macOS VM with
+# an empty keychain on every run, so there is nothing to codesign with unless
+# we import an identity first):
+#   IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 — base64 of the exported .p12
+#     (Apple Distribution cert + private key, password-protected)
+#     (generate with: base64 -i AppleDistribution.p12 | pbcopy)
+#   IOS_DISTRIBUTION_CERTIFICATE_PASSWORD   — the password chosen when
+#     exporting that .p12 from Keychain Access
+#   IOS_PROVISIONING_PROFILE_BASE64         — base64 of the App Store
+#     distribution provisioning profile for live.kadenz.kadenzScanner
+#     (generate with: base64 -i KadenzScanner_AppStore.mobileprovision | pbcopy)
+#
+# The App Store Connect API key only authenticates the *upload*
+# (fastlane/App Store Connect API). It cannot codesign the archive — Xcode
+# needs an actual Apple Distribution certificate + matching provisioning
+# profile present locally for that, which is why the two secret groups above
+# are both required and distinct.
+#
 # Optional (Android Play Store, see the `android` job):
 #   PLAY_STORE_SERVICE_ACCOUNT_JSON   — Play Console service-account JSON
 #
@@ -56,6 +75,59 @@ jobs:
           cache: true
 
       - run: flutter pub get
+
+      # The runner is a brand-new macOS VM on every run: its keychain has no
+      # codesigning identity and ~/Library/MobileDevice/Provisioning Profiles
+      # is empty. Without this step, `flutter build ipa` fails immediately
+      # with "No valid code signing certificates were found" — this is a
+      # separate requirement from the App Store Connect API key used later
+      # for the upload itself (that key authenticates the upload, not the
+      # codesign step).
+      - name: Import Apple Distribution certificate + provisioning profile
+        env:
+          CERT_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CERT_BASE64:-}" ] || [ -z "${CERT_PASSWORD:-}" ] || [ -z "${PROFILE_BASE64:-}" ]; then
+            echo "::error::iOS code-signing secrets are not all set (IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 / IOS_DISTRIBUTION_CERTIFICATE_PASSWORD / IOS_PROVISIONING_PROFILE_BASE64)" >&2
+            exit 1
+          fi
+
+          CERT_PATH="${RUNNER_TEMP}/dist_cert.p12"
+          PROFILE_PATH="${RUNNER_TEMP}/profile.mobileprovision"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/release-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          # Only wipe the decoded cert/profile files here — the keychain itself
+          # must stay unlocked and in the search list for the later build step.
+          # It is deleted in the "Clean up temporary keychain" step below.
+          trap 'rm -f "$CERT_PATH" "$PROFILE_PATH"' EXIT
+
+          printf '%s' "$CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          # Dedicated keychain, scoped to this job only, so we never touch
+          # the runner's default login keychain.
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A \
+            -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          # Why: intentional word-splitting — each existing keychain path must
+          # become its own positional arg to `-s`, matching GitHub's own
+          # documented recipe for this step.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_DIR"
+          cp "$PROFILE_PATH" "$PROFILES_DIR/"
+
+          echo "Identities available for codesigning after import:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Generate native iOS/Android projects + fastlane overlay
         run: ./setup.sh
@@ -126,6 +198,10 @@ jobs:
           path: build/symbols/ios/
           if-no-files-found: warn
           retention-days: 90
+
+      - name: Clean up temporary keychain
+        if: always()
+        run: security delete-keychain "${RUNNER_TEMP}/release-signing.keychain-db" 2>/dev/null || true
 
   android:
     name: Android — build app bundle (artifact)
