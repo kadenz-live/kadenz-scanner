@@ -66,7 +66,7 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _maybeInitOffline();
+    unawaited(_maybeInitOffline());
   }
 
   Future<void> _maybeInitOffline() async {
@@ -92,7 +92,7 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
 
   @override
   void dispose() {
-    _controller.dispose();
+    unawaited(_controller.dispose());
     _offline?.removeListener(_onOfflineChanged);
     _offline?.dispose();
     super.dispose();
@@ -175,7 +175,7 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
       final ReconcileResult result = await offline.reconcile();
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ConflictListScreen(result: result)),
+        MaterialPageRoute<void>(builder: (_) => ConflictListScreen(result: result)),
       );
     } catch (e) {
       _snack(l.offlineSnackReconcileFailed(e.toString()));

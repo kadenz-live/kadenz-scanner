@@ -4,6 +4,12 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  language:
+    # Strict type discipline: implicit downcasts, inferred `dynamic`, and raw
+    # generics are compile-time errors instead of silent dynamic dispatch.
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
   errors:
     # Treat unused imports/code as errors locally too (CI already fails on them).
     unused_import: error
@@ -11,6 +17,20 @@ analyzer:
 
 linter:
   rules:
+    # Style baseline (pre-existing).
     prefer_const_constructors: true
     prefer_final_locals: true
     avoid_print: true
+    # Safety: a discarded Future in door-scan / sync code is a lost error.
+    unawaited_futures: true
+    discarded_futures: true
+    # Safety: no untyped dynamic dispatch on API payloads.
+    avoid_dynamic_calls: true
+    # Resource hygiene.
+    cancel_subscriptions: true
+    close_sinks: true
+    # Error-handling hygiene.
+    only_throw_errors: true
+    throw_in_finally: true
+    unnecessary_statements: true
+    test_types_in_equals: true

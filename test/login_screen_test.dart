@@ -19,7 +19,7 @@ class _FakeAuthService extends AuthService {
   });
 
   final AuthException? signInError;
-  final Object? signInThrows;
+  final Exception? signInThrows;
   final Completer<void>? signInGate;
   final String baseUrlValue;
   int signInCalls = 0;

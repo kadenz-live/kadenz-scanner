@@ -101,7 +101,7 @@ class AuthService {
   Future<ScannerUser?> currentUser() async {
     final raw = await _storage.read(key: _kUser);
     if (raw == null) return null;
-    return ScannerUser.fromJson(jsonDecode(raw));
+    return ScannerUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
 
   /// Lightweight reachability probe against `/healthz`. Returns `true` only on
@@ -137,7 +137,7 @@ class AuthService {
     }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    final user = ScannerUser.fromJson(body['user']);
+    final user = ScannerUser.fromJson(body['user'] as Map<String, dynamic>);
     if (user.role != 'scanner' && user.role != 'admin') {
       throw AuthException('Account hat keine Scanner-Berechtigung.');
     }
@@ -160,9 +160,11 @@ class AuthService {
     try {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final err = j['error'];
-      if (err is Map) {
-        if (err['messages'] is List) return (err['messages'] as List).join(', ');
-        if (err['message'] is String) return err['message'];
+      if (err is Map<String, dynamic>) {
+        final messages = err['messages'];
+        if (messages is List<dynamic>) return messages.join(', ');
+        final message = err['message'];
+        if (message is String) return message;
       }
     } catch (_) {}
     return null;
