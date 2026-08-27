@@ -5,12 +5,17 @@ import 'package:kadenz_scanner/models/reconcile_result.dart';
 import 'package:kadenz_scanner/services/offline_store.dart';
 import 'package:kadenz_scanner/services/offline_validator.dart';
 
-OfflineManifest manifestWith(List<ManifestEntry> entries, {DateTime? generatedAt}) =>
+OfflineManifest manifestWith(
+  List<ManifestEntry> entries, {
+  DateTime? generatedAt,
+  DateTime? validUntil,
+}) =>
     OfflineManifest(
       eventId: 'evt-1',
       eventTitle: 'Concert',
       generatedAt: generatedAt ?? DateTime.utc(2030, 1, 1, 18),
       entries: entries,
+      validUntil: validUntil,
     );
 
 ManifestEntry entryFor(String token, {required String id, String status = 'active'}) =>
@@ -135,6 +140,123 @@ void main() {
       expect(m.isStaleSoft(gen.add(OfflineManifest.softStaleThreshold)), true);
       expect(m.isStaleHard(gen.add(OfflineManifest.softStaleThreshold)), false);
       expect(m.isStaleHard(gen.add(OfflineManifest.hardStaleThreshold)), true);
+    });
+  });
+
+  // kadenz#1778 — server-side valid_until is authoritative for the hard gate.
+  //
+  // Authority-order guards: each direction below FAILS if the implementation
+  // inverts the order (fallback-first), ANDs, or ORs the constant with the
+  // server deadline. Safety rationale on [OfflineManifest.validUntil]: an
+  // expired manifest must NEVER admit — refusing fails safe (operator goes
+  // online), admitting a revoked ticket is unrecoverable at the door.
+  group('OfflineManifest valid_until authority (kadenz#1778)', () {
+    final gen = DateTime.utc(2030, 6, 1, 20);
+
+    test('server-expired beats constant-fresh: young manifest, past valid_until is hard-stale', () {
+      // Age 5 min — far inside the 12h constant. Server says expired.
+      // Would FAIL under fallback-first / AND semantics (constant-fresh wins).
+      final m = manifestWith(
+        [entryFor('A.sig', id: 't1')],
+        generatedAt: gen,
+        validUntil: gen.add(const Duration(minutes: 1)),
+      );
+      expect(m.isStaleHard(gen.add(const Duration(minutes: 5))), true);
+    });
+
+    test('server-fresh beats constant-expired: old manifest, future valid_until is not hard-stale', () {
+      // Age 24h — far past the 12h constant. Server extended the window
+      // (it knows event timing, e.g. multi-day events).
+      // Would FAIL under OR / min(server, constant) semantics.
+      final m = manifestWith(
+        [entryFor('A.sig', id: 't1')],
+        generatedAt: gen,
+        validUntil: gen.add(const Duration(hours: 36)),
+      );
+      expect(m.isStaleHard(gen.add(const Duration(hours: 24))), false);
+    });
+
+    test('the expiry instant itself is already stale (never admit at valid_until)', () {
+      final deadline = gen.add(const Duration(hours: 3));
+      final m = manifestWith([entryFor('A.sig', id: 't1')], generatedAt: gen, validUntil: deadline);
+      expect(m.isStaleHard(deadline.subtract(const Duration(seconds: 1))), false);
+      expect(m.isStaleHard(deadline), true);
+    });
+
+    test('absent valid_until keeps the 12h constant fallback (pre-#1778 server)', () {
+      final m = manifestWith([entryFor('A.sig', id: 't1')], generatedAt: gen);
+      expect(m.validUntil, isNull);
+      expect(m.isStaleHard(gen.add(OfflineManifest.hardStaleThreshold - const Duration(minutes: 1))), false);
+      expect(m.isStaleHard(gen.add(OfflineManifest.hardStaleThreshold)), true);
+    });
+
+    test('validator refuses to admit an otherwise-valid ticket once the server deadline passed', () {
+      // End-to-end never-admit guard: active ticket, young manifest, but the
+      // server deadline has passed → forceOnline, not admitted.
+      final v = OfflineValidator(
+        manifestWith(
+          [entryFor('A.sig', id: 't1')],
+          generatedAt: gen,
+          validUntil: gen.add(const Duration(minutes: 1)),
+        ),
+        clock: () => gen.add(const Duration(minutes: 5)),
+      );
+      final outcome = v.validate('A.sig');
+      expect(outcome.accepted, false);
+      expect(outcome.forceOnline, true);
+      expect(outcome.result.status, 'manifest_stale');
+    });
+
+    test('validator admits past the 12h constant while the server deadline holds', () {
+      final v = OfflineValidator(
+        manifestWith(
+          [entryFor('A.sig', id: 't1')],
+          generatedAt: gen,
+          validUntil: gen.add(const Duration(hours: 36)),
+        ),
+        clock: () => gen.add(const Duration(hours: 24)),
+      );
+      expect(v.validate('A.sig').accepted, true);
+    });
+
+    test('fromJson parses valid_until and tolerates its absence', () {
+      final withField = OfflineManifest.fromJson({
+        'event_id': 'evt-1',
+        'generated_at': '2030-06-01T20:00:00Z',
+        'valid_until': '2030-06-02T08:00:00Z',
+        'tickets': <Map<String, dynamic>>[],
+      });
+      expect(withField.validUntil, DateTime.utc(2030, 6, 2, 8));
+
+      final withoutField = OfflineManifest.fromJson({
+        'event_id': 'evt-1',
+        'generated_at': '2030-06-01T20:00:00Z',
+        'tickets': <Map<String, dynamic>>[],
+      });
+      expect(withoutField.validUntil, isNull);
+    });
+
+    test('valid_until survives the JSON round-trip (offline-store persistence)', () {
+      // Dropping the field on persist would demote a server-expired manifest
+      // to the 12h fallback after an app relaunch — the unsafe direction.
+      final deadline = gen.add(const Duration(hours: 3));
+      final m = manifestWith([entryFor('A.sig', id: 't1')], generatedAt: gen, validUntil: deadline);
+      final back = OfflineManifest.fromJson(m.toJson());
+      expect(back.validUntil, isNotNull);
+      expect(back.validUntil!.toUtc(), deadline);
+      // And a null deadline stays null (no accidental fabrication).
+      final nullBack = OfflineManifest.fromJson(manifestWith([]).toJson());
+      expect(nullBack.validUntil, isNull);
+    });
+
+    test('valid_until survives OfflineStore save/load', () async {
+      final store = OfflineStore(InMemoryKeyValueStore());
+      final deadline = gen.add(const Duration(hours: 3));
+      await store.saveManifest(
+        manifestWith([entryFor('A.sig', id: 't1')], generatedAt: gen, validUntil: deadline),
+      );
+      final loaded = await store.loadManifest('evt-1');
+      expect(loaded!.validUntil!.toUtc(), deadline);
     });
   });
 

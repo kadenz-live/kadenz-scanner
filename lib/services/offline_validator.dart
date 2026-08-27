@@ -34,8 +34,10 @@ class OfflineScanOutcome {
 /// offline session are rejected locally to prevent same-device double entry.
 ///
 /// Staleness gate: a manifest cannot observe revoke/refund events that happen
-/// after it was generated. Past [OfflineManifest.hardStaleThreshold] this
-/// validator refuses to admit any ticket and signals [OfflineScanOutcome.forceOnline]
+/// after it was generated. Once [OfflineManifest.isStaleHard] trips — the
+/// server-side [OfflineManifest.validUntil] when present (authoritative,
+/// kadenz#1778), the [OfflineManifest.hardStaleThreshold] constant otherwise —
+/// this validator refuses to admit any ticket and signals [OfflineScanOutcome.forceOnline]
 /// so the operator revalidates against the live server. Past the softer
 /// [OfflineManifest.softStaleThreshold] scans still go through but each carries
 /// a [OfflineScanOutcome.staleWarning].
