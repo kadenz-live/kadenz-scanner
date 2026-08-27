@@ -40,6 +40,12 @@
   "scannerAnyEvent": "Any event",
   "scannerTooltipTorch": "Torch",
   "scannerTooltipCamera": "Switch camera",
+  "scannerCameraPermissionDenied": "Camera access denied",
+  "scannerCameraPermissionHint": "Allow camera access in system settings.",
+  "scannerCameraUnsupported": "No camera available",
+  "scannerCameraError": "Camera error",
+  "scannerCameraFaultHint": "Use manual code entry.",
+  "scannerCameraRetry": "Retry",
   "scannerNetworkError": "Network error",
   "scannerHudCheckedIn": "{used} / {total} checked in",
   "@scannerHudCheckedIn": {
