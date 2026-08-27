@@ -25,6 +25,22 @@ import 'scanner_status_labels.dart';
 ScanAudio? _defaultAudio;
 ScanAudio _resolveDefaultAudio() => _defaultAudio ??= ScanAudio();
 
+/// An action the camera-fault panel can offer, in render order.
+///
+/// Kept as a closed set so the panel can be reasoned about as a table of
+/// (fault x entry mode) -> actions, and so a widget test can pin that every
+/// cell of that table has at least one entry.
+enum _FaultAction {
+  /// Restart the camera. Only meaningful where a restart can change anything.
+  retry,
+
+  /// Open the manual-entry modal. Requires a concrete event.
+  manualEntry,
+
+  /// Back to the event picker — the step that makes manual entry reachable.
+  selectEvent,
+}
+
 class ScannerScreen extends StatefulWidget {
   ScannerScreen({
     super.key,
@@ -229,6 +245,15 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// Whether manual code entry can be offered at all.
+  ///
+  /// The backend `validate_code` endpoint is event-scoped, so "Any event"
+  /// scanning has no manual fallback. This single predicate gates the app-bar
+  /// control, the fault panel's manual-entry button *and* the fault panel's
+  /// hint text, so the three can never drift apart and promise a control that
+  /// is not on screen (Lektor L-05).
+  bool get _manualEntryAvailable => widget.event != null;
+
   /// Open the manual-entry modal. Falls through to the same result/error
   /// rendering path as a camera scan so the operator's experience is
   /// consistent. Disabled when there is no concrete event selected — the
@@ -280,7 +305,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         title: Text(widget.event?.title ?? l.scannerAnyEvent),
         actions: [
           if (offline != null) _offlineMenu(context, offline),
-          if (widget.event != null)
+          if (_manualEntryAvailable)
             IconButton(
               icon: const Icon(Icons.keyboard_outlined),
               tooltip: l.scannerTooltipManualEntry,
@@ -354,27 +379,99 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     );
   }
 
-  /// Blocking panel shown in place of the preview when the camera cannot run.
+  /// Title, hint and offered actions for one camera fault.
   ///
-  /// Door-staff terse: what is wrong, the one thing that fixes it, one button.
-  /// Manual entry stays reachable in the app bar throughout, so a denied
-  /// camera never means a closed door.
-  Widget _cameraFaultPanel(BuildContext context, ScanCameraFault fault) {
-    final l = AppLocalizations.of(context)!;
-    final (String title, String hint) = switch (fault) {
+  /// Pure and total: the panel renders exactly what this returns, so the hint
+  /// and the buttons are decided in one place from one predicate
+  /// ([_manualEntryAvailable]) and cannot contradict each other.
+  ///
+  /// Two rules encoded here:
+  /// * Retry is only offered where a restart can plausibly help
+  ///   (`permissionDenied` after the operator grants access, `unknown`).
+  ///   For `unsupported` no restart makes absent hardware appear, so retry
+  ///   would be the button that never works.
+  /// * Manual entry is only named — in the hint and as a button — when the
+  ///   event-scoped control actually exists. Otherwise the operator is sent
+  ///   back to the picker, which is the step that unlocks it.
+  ({String title, String hint, List<_FaultAction> actions}) _faultPlan(
+    AppLocalizations l,
+    ScanCameraFault fault,
+  ) {
+    final manual = _manualEntryAvailable;
+    // The escape hatch out of a dead camera: manual entry where it works,
+    // otherwise back to the picker to select an event first.
+    final escape = manual ? _FaultAction.manualEntry : _FaultAction.selectEvent;
+    final hint =
+        manual ? l.scannerCameraFaultHint : l.scannerCameraFaultHintNoEvent;
+    return switch (fault) {
       ScanCameraFault.permissionDenied => (
-          l.scannerCameraPermissionDenied,
-          l.scannerCameraPermissionHint,
+          title: l.scannerCameraPermissionDenied,
+          hint: l.scannerCameraPermissionHint,
+          actions: [
+            _FaultAction.retry,
+            if (manual) _FaultAction.manualEntry,
+          ],
         ),
       ScanCameraFault.unsupported => (
-          l.scannerCameraUnsupported,
-          l.scannerCameraFaultHint,
+          title: l.scannerCameraUnsupported,
+          hint: hint,
+          actions: [escape],
         ),
       ScanCameraFault.unknown => (
-          l.scannerCameraError,
-          l.scannerCameraFaultHint,
+          title: l.scannerCameraError,
+          hint: hint,
+          actions: [_FaultAction.retry, escape],
         ),
     };
+  }
+
+  /// One fault-panel button. The first action of a plan is the primary
+  /// (filled) one; the rest are text buttons, forced white so they keep
+  /// contrast on the panel's black backdrop.
+  Widget _faultActionButton(_FaultAction action, {required bool primary}) {
+    final l = AppLocalizations.of(context)!;
+    final (Key key, String label, VoidCallback onPressed) = switch (action) {
+      _FaultAction.retry => (
+          const ValueKey('scanner_camera_retry'),
+          l.scannerCameraRetry,
+          () => unawaited(_camera.start()),
+        ),
+      // Deliberately the same label as the app-bar control it mirrors: one
+      // action, one name.
+      _FaultAction.manualEntry => (
+          const ValueKey('scanner_camera_manual_entry'),
+          l.scannerTooltipManualEntry,
+          () => unawaited(_openManualEntry()),
+        ),
+      // `maybePop` rather than `pop`: the scanner is always pushed from the
+      // picker in production, and a route that cannot pop must not throw.
+      _FaultAction.selectEvent => (
+          const ValueKey('scanner_camera_select_event'),
+          l.scannerCameraSelectEvent,
+          () => unawaited(Navigator.of(context).maybePop<void>()),
+        ),
+    };
+    if (primary) {
+      return FilledButton(key: key, onPressed: onPressed, child: Text(label));
+    }
+    return TextButton(
+      key: key,
+      style: TextButton.styleFrom(foregroundColor: Colors.white),
+      onPressed: onPressed,
+      child: Text(label),
+    );
+  }
+
+  /// Blocking panel shown in place of the preview when the camera cannot run.
+  ///
+  /// Door-staff terse: what is wrong, the one thing that fixes it, and only
+  /// actions that can actually be taken from here — every fault and entry
+  /// mode leaves at least one.
+  Widget _cameraFaultPanel(BuildContext context, ScanCameraFault fault) {
+    final l = AppLocalizations.of(context)!;
+    final plan = _faultPlan(l, fault);
+    final title = plan.title;
+    final hint = plan.hint;
     return Semantics(
       key: const ValueKey('scanner_camera_fault'),
       container: true,
@@ -407,11 +504,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   style: const TextStyle(color: Colors.white70),
                 ),
                 const SizedBox(height: 20),
-                FilledButton(
-                  key: const ValueKey('scanner_camera_retry'),
-                  onPressed: () => unawaited(_camera.start()),
-                  child: Text(l.scannerCameraRetry),
-                ),
+                for (final (index, action) in plan.actions.indexed) ...[
+                  if (index > 0) const SizedBox(height: 4),
+                  _faultActionButton(action, primary: index == 0),
+                ],
               ],
             ),
           ),

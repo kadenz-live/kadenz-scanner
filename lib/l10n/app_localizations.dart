@@ -308,11 +308,23 @@ abstract class AppLocalizations {
   /// **'Code manuell eingeben.'**
   String get scannerCameraFaultHint;
 
+  /// No description provided for @scannerCameraFaultHintNoEvent.
+  ///
+  /// In de, this message translates to:
+  /// **'Zurück und Event wählen, dann manuelle Eingabe.'**
+  String get scannerCameraFaultHintNoEvent;
+
   /// No description provided for @scannerCameraRetry.
   ///
   /// In de, this message translates to:
   /// **'Erneut versuchen'**
   String get scannerCameraRetry;
+
+  /// No description provided for @scannerCameraSelectEvent.
+  ///
+  /// In de, this message translates to:
+  /// **'Event auswählen'**
+  String get scannerCameraSelectEvent;
 
   /// No description provided for @scannerNetworkError.
   ///

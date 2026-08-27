@@ -18,8 +18,10 @@ enum ScanTorch {
 /// Which physical camera feeds the preview.
 enum ScanCameraFacing { back, front }
 
-/// Why the camera preview is unusable. Kept coarse on purpose: door staff get
-/// one of three actions — grant permission, use manual entry, or retry.
+/// Why the camera preview is unusable. Kept coarse on purpose: the scanner
+/// screen maps each fault to the actions that can still help — grant
+/// permission and retry, fall back to manual entry, or step back to the event
+/// picker when manual entry is not addressable.
 enum ScanCameraFault {
   /// The operator denied (or never granted) camera permission.
   permissionDenied,
