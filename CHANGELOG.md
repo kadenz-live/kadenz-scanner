@@ -6,6 +6,30 @@ project aims to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Login no longer gates on the user's role string. The old check admitted only
+  `'scanner'` or `'admin'`, which meant a `global_admin` could not sign in, the
+  server never emits `'admin'` at all, and — the part that mattered — a door
+  operator holding an `einlass` membership on the account whose events they
+  work was turned away. The single role that passed was exactly the one the API
+  short-circuited to platform-wide scan authority, so the client gate was what
+  forced every door device onto platform-wide authority. The scanner now models
+  no authority of its own: it asks the API whether this operator may reach the
+  scanner surface and takes that answer, so a future change to the authority
+  model needs no scanner release. See kadenz#1816 / ADR-0054.
+  Only an explicit `403` is treated as a refusal — a server fault is not an
+  authorization answer, and turning one into a login refusal would lock door
+  staff out during an outage.
+
+### Added
+
+- `X-Device-Id` is now sent on sign-in and on every API call, not only on the
+  manifest fetch. The API binds it to the session row at login, which makes
+  "revoke this phone" an available operation instead of only "revoke this
+  session" (which the device re-establishes at the next login). The header
+  carries no authority — it is a revocation and forensic handle.
+
 ### Changed
 
 - The camera-fault panel now offers only actions the operator can actually
