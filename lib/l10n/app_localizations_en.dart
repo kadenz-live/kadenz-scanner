@@ -128,7 +128,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get scannerCameraFaultHint => 'Use manual code entry.';
 
   @override
-  String get scannerCameraRetry => 'Retry';
+  String get scannerCameraFaultHintNoEvent =>
+      'Go back and select an event, then use manual entry.';
+
+  @override
+  String get scannerCameraRetry => 'Try again';
+
+  @override
+  String get scannerCameraSelectEvent => 'Select event';
 
   @override
   String get scannerNetworkError => 'Network error';

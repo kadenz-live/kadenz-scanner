@@ -162,6 +162,49 @@ Finder _inResultContaining(String text) => find.descendant(
 Future<void> _flushSnack(WidgetTester tester) =>
     tester.pumpAndSettle(const Duration(seconds: 5));
 
+/// Pump the scanner the way production reaches it — pushed on top of the
+/// event picker — and raise a camera fault on it.
+///
+/// The picker route underneath matters: "select event" is only a real action
+/// if there is something to go back to.
+Future<FakeScanCamera> _pumpFault(
+  WidgetTester tester, {
+  required ScanCameraFault fault,
+  required bool anyEvent,
+  _FakeApi? api,
+  Locale locale = const Locale('en'),
+}) async {
+  final camera = FakeScanCamera();
+  // MaterialApp needs a real home route, so the picker stub is the home and
+  // the scanner is pushed on top of it — the production stack shape.
+  final navigator = GlobalKey<NavigatorState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: locale,
+      navigatorKey: navigator,
+      home: const Scaffold(body: Center(child: Text('event picker'))),
+    ),
+  );
+  await tester.pumpAndSettle();
+  unawaited(
+    navigator.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => ScannerScreen(
+          api: api ?? _FakeApi(),
+          event: anyEvent ? null : _event(),
+          cameraFactory: () => camera,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  camera.raiseFault(fault);
+  await tester.pumpAndSettle();
+  return camera;
+}
+
 /// Deliver one detection and let the validation round-trip settle.
 Future<void> _scan(WidgetTester tester, FakeScanCamera camera, String payload) async {
   camera.emit(payload);
@@ -408,18 +451,6 @@ void main() {
       expect(find.byIcon(Icons.keyboard_outlined), findsOneWidget);
     });
 
-    testWidgets('a device without a camera says so', (tester) async {
-      final camera = FakeScanCamera();
-      await tester.pumpWidget(_harness(api: _FakeApi(), camera: camera));
-      await tester.pumpAndSettle();
-
-      camera.raiseFault(ScanCameraFault.unsupported);
-      await tester.pumpAndSettle();
-
-      expect(find.text('No camera available'), findsOneWidget);
-      expect(find.text('Use manual code entry.'), findsOneWidget);
-    });
-
     testWidgets('retry restarts the camera and brings the preview back',
         (tester) async {
       final camera = FakeScanCamera();
@@ -435,6 +466,188 @@ void main() {
 
       expect(camera.startCount, startsBefore + 1);
       expect(find.byKey(const ValueKey('fake_camera_preview')), findsOneWidget);
+    });
+  });
+
+  group('camera fault x entry mode matrix', () {
+    // One test per cell of (fault x entry mode). The invariant under test is
+    // that no cell is a dead end: every cell offers at least one action the
+    // operator can actually take, and the hint names only controls that are
+    // on screen. The cell that used to fail this is "any event" x unsupported
+    // — it promised manual entry, which is gated on a concrete event, and
+    // offered a retry that cannot make absent camera hardware appear
+    // (Lektor L-05 on PR #40).
+    const retry = ValueKey('scanner_camera_retry');
+    const manualEntry = ValueKey('scanner_camera_manual_entry');
+    const selectEvent = ValueKey('scanner_camera_select_event');
+    const allActions = <ValueKey<String>>[retry, manualEntry, selectEvent];
+
+    const manualHint = 'Use manual code entry.';
+    const noEventHint = 'Go back and select an event, then use manual entry.';
+    const permissionHint = 'Allow camera access in system settings.';
+
+    final cells = <
+        ({
+          ScanCameraFault fault,
+          bool anyEvent,
+          String title,
+          String hint,
+          List<ValueKey<String>> actions,
+        })>[
+      (
+        fault: ScanCameraFault.permissionDenied,
+        anyEvent: false,
+        title: 'Camera access denied',
+        hint: permissionHint,
+        // Granting access in system settings makes a retry work; manual entry
+        // keeps the queue moving until it does.
+        actions: [retry, manualEntry],
+      ),
+      (
+        fault: ScanCameraFault.permissionDenied,
+        anyEvent: true,
+        title: 'Camera access denied',
+        hint: permissionHint,
+        actions: [retry],
+      ),
+      (
+        fault: ScanCameraFault.unsupported,
+        anyEvent: false,
+        title: 'No camera available',
+        hint: manualHint,
+        // No retry: restarting cannot conjure a camera.
+        actions: [manualEntry],
+      ),
+      (
+        fault: ScanCameraFault.unsupported,
+        anyEvent: true,
+        title: 'No camera available',
+        hint: noEventHint,
+        // The only move that helps is back to the picker.
+        actions: [selectEvent],
+      ),
+      (
+        fault: ScanCameraFault.unknown,
+        anyEvent: false,
+        title: 'Camera error',
+        hint: manualHint,
+        actions: [retry, manualEntry],
+      ),
+      (
+        fault: ScanCameraFault.unknown,
+        anyEvent: true,
+        title: 'Camera error',
+        hint: noEventHint,
+        actions: [retry, selectEvent],
+      ),
+    ];
+
+    for (final cell in cells) {
+      final mode = cell.anyEvent ? 'any event' : 'event selected';
+      testWidgets('${cell.fault.name} / $mode offers only actions that work',
+          (tester) async {
+        await _pumpFault(tester, fault: cell.fault, anyEvent: cell.anyEvent);
+
+        expect(find.byKey(const ValueKey('fake_camera_preview')), findsNothing);
+        expect(find.text(cell.title), findsOneWidget);
+        expect(find.text(cell.hint), findsOneWidget);
+
+        // Not a dead end.
+        expect(cell.actions, isNotEmpty);
+        for (final action in allActions) {
+          expect(
+            find.byKey(action),
+            cell.actions.contains(action) ? findsOneWidget : findsNothing,
+            reason: '${action.value} in ${cell.fault.name} / $mode',
+          );
+        }
+
+        // Hint and control are pinned together: the app-bar control, the
+        // panel button and the hint all hang off the same predicate, so a
+        // hint may never name a control that is not on screen.
+        final manualReachable =
+            find.byIcon(Icons.keyboard_outlined).evaluate().isNotEmpty;
+        expect(manualReachable, !cell.anyEvent);
+        if (manualReachable) {
+          expect(find.text(noEventHint), findsNothing);
+        } else {
+          expect(find.text(manualHint), findsNothing);
+          expect(find.byKey(manualEntry), findsNothing);
+        }
+      });
+    }
+
+    testWidgets('the retry offered on an unknown fault restarts the camera',
+        (tester) async {
+      final camera = await _pumpFault(
+        tester,
+        fault: ScanCameraFault.unknown,
+        anyEvent: true,
+      );
+      final startsBefore = camera.startCount;
+
+      await tester.tap(find.byKey(const ValueKey('scanner_camera_retry')));
+      await tester.pumpAndSettle();
+
+      expect(camera.startCount, startsBefore + 1);
+    });
+
+    testWidgets('the manual-entry button offered on a dead camera opens the '
+        'modal', (tester) async {
+      final api = _FakeApi(onValidateByCode: (_) async => _ok(holder: 'Ada Lovelace'));
+      await _pumpFault(
+        tester,
+        fault: ScanCameraFault.unsupported,
+        anyEvent: false,
+        api: api,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('scanner_camera_manual_entry')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'TIX-AAA1111');
+      // The dialog's Validate button only enables once the field is non-empty.
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Validate'));
+      await tester.pumpAndSettle();
+
+      expect(api.validatedCodes, ['TIX-AAA1111']);
+      expect(_inResultContaining('Ada Lovelace'), findsOneWidget);
+    });
+
+    testWidgets('the select-event button offered in "any event" mode goes '
+        'back to the picker', (tester) async {
+      await _pumpFault(
+        tester,
+        fault: ScanCameraFault.unsupported,
+        anyEvent: true,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('scanner_camera_select_event')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('event picker'), findsOneWidget);
+      expect(find.byKey(const ValueKey('scanner_camera_fault')), findsNothing);
+    });
+
+    testWidgets('the German panel names the same reachable action',
+        (tester) async {
+      // The de/en ARB pair is what door staff actually read — pin the worst
+      // cell in the shipping locale too, not just in the test locale.
+      await _pumpFault(
+        tester,
+        fault: ScanCameraFault.unsupported,
+        anyEvent: true,
+        locale: const Locale('de'),
+      );
+
+      expect(find.text('Keine Kamera verfügbar'), findsOneWidget);
+      expect(
+        find.text('Zurück und Event wählen, dann manuelle Eingabe.'),
+        findsOneWidget,
+      );
+      expect(find.text('Event auswählen'), findsOneWidget);
+      expect(find.text('Code manuell eingeben.'), findsNothing);
+      expect(find.byKey(const ValueKey('scanner_camera_retry')), findsNothing);
     });
   });
 

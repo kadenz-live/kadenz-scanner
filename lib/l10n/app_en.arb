@@ -45,7 +45,9 @@
   "scannerCameraUnsupported": "No camera available",
   "scannerCameraError": "Camera error",
   "scannerCameraFaultHint": "Use manual code entry.",
-  "scannerCameraRetry": "Retry",
+  "scannerCameraFaultHintNoEvent": "Go back and select an event, then use manual entry.",
+  "scannerCameraRetry": "Try again",
+  "scannerCameraSelectEvent": "Select event",
   "scannerNetworkError": "Network error",
   "scannerHudCheckedIn": "{used} / {total} checked in",
   "@scannerHudCheckedIn": {
