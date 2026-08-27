@@ -209,7 +209,7 @@ void main() {
     });
 
     test('handles an empty conflict list', () {
-      final r = ReconcileResult.fromJson({'accepted_count': 5, 'conflicts': []});
+      final r = ReconcileResult.fromJson({'accepted_count': 5, 'conflicts': <Map<String, dynamic>>[]});
       expect(r.hasConflicts, false);
       expect(r.acceptedCount, 5);
     });

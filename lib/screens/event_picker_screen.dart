@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -44,9 +46,9 @@ class _EventPickerScreenState extends State<EventPickerScreen> {
   Future<void> _logout() async {
     await widget.authService.signOut();
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
+    unawaited(Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
       builder: (_) => LoginScreen(authService: widget.authService),
-    ));
+    )));
   }
 
   @override
@@ -58,7 +60,7 @@ class _EventPickerScreenState extends State<EventPickerScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
           IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () async {
-            await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsScreen(authService: widget.authService)));
+            await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SettingsScreen(authService: widget.authService)));
             _refresh();
           }),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
@@ -119,7 +121,7 @@ class _EventPickerScreenState extends State<EventPickerScreen> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => ScannerScreen(api: _api, event: event, authService: widget.authService),
         )),
         child: Padding(

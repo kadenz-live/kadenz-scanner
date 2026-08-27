@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
@@ -34,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshApiState();
+    unawaited(_refreshApiState());
   }
 
   /// Re-evaluate the resolved API URL and ping `/healthz`. Called on first
@@ -68,9 +70,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await widget.authService.signIn(_email.text.trim(), _password.text);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
+      unawaited(Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => widget._nextScreenBuilder(widget.authService),
-      ));
+      )));
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
@@ -106,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   IconButton(
                     icon: const Icon(Icons.settings_outlined),
                     onPressed: () async {
-                      await Navigator.of(context).push(MaterialPageRoute(
+                      await Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => SettingsScreen(authService: widget.authService),
                       ));
                       await _refreshApiState();

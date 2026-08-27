@@ -46,8 +46,9 @@ class _SplashScreenState extends State<SplashScreen>
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-    _resolve();
+    );
+    unawaited(_pulse.repeat(reverse: true));
+    unawaited(_resolve());
   }
 
   Future<void> _resolve() async {
@@ -68,11 +69,11 @@ class _SplashScreenState extends State<SplashScreen>
 
     final user = pair[0];
     final token = pair[1];
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
+    unawaited(Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
       builder: (_) => (user != null && token != null)
           ? widget._loggedInBuilder(widget.authService)
           : widget._loggedOutBuilder(widget.authService),
-    ));
+    )));
   }
 
   @override
