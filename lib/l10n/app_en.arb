@@ -86,6 +86,17 @@
   "offlineBannerReconcile": "Reconcile",
   "offlineSnackManifestLoaded": "Offline manifest loaded: {count} tickets",
   "offlineSnackSyncFailed": "Sync failed: {error}",
+  "offlineSnackManifestRejected": "Manifest refused ({reason}). The last valid manifest stays active.",
+  "@offlineSnackManifestRejected": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+  "manifestRejectionSignatureInvalid": "Invalid signature — the document was altered",
+  "manifestRejectionSignatureMissing": "No signature — the server does not sign",
+  "manifestRejectionSignatureUnknownKey": "Unknown signing key — app update required",
+  "manifestRejectionMalformed": "Unreadable manifest",
+  "offlineManifestUnverified": "Manifest unsigned — not cryptographically verified yet",
   "offlineSnackReconcileFailed": "Reconcile failed: {error}",
 
   "reconcileTitle": "Reconcile complete",

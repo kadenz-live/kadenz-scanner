@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,7 +47,7 @@ class _FakeApi extends ApiService {
 
   final Future<ValidationResult> Function(String payload) onValidate;
   final Future<ValidationResult> Function(String code)? onValidateByCode;
-  final OfflineManifest? manifestData;
+  final String? manifestData;
   final ReconcileResult? reconcileResponse;
 
   final List<String> validatedPayloads = <String>[];
@@ -71,7 +72,7 @@ class _FakeApi extends ApiService {
   }
 
   @override
-  Future<OfflineManifest> manifest(String eventId) async {
+  Future<String> manifestDocument(String eventId) async {
     final data = manifestData;
     if (data == null) throw StateError('manifest not expected');
     return data;
@@ -760,23 +761,26 @@ void main() {
   });
 
   group('offline mode', () {
-    OfflineManifest manifest() => OfflineManifest(
-          eventId: 'evt-1',
-          eventTitle: 'Junkyard Night',
-          generatedAt: DateTime.now().toUtc(),
-          entries: [
-            ManifestEntry(
-              id: 't1',
-              digest: OfflineManifest.digestOf('offline.token.A'),
-              status: 'active',
-            ),
-            ManifestEntry(
-              id: 't2',
-              digest: OfflineManifest.digestOf('offline.token.B'),
-              status: 'active',
-            ),
+    // The wire document, unsigned — a scanner on this build talking to an API
+    // that does not sign yet. It must keep working (kadenz#1823, ADR-0055 §C).
+    String manifest() => jsonEncode({
+          'event_id': 'evt-1',
+          'event_title': 'Junkyard Night',
+          'generated_at': DateTime.now().toUtc().toIso8601String(),
+          'event_state': 'open',
+          'tickets': [
+            {
+              'id': 't1',
+              'digest': OfflineManifest.digestOf('offline.token.A'),
+              'status': 'active',
+            },
+            {
+              'id': 't2',
+              'digest': OfflineManifest.digestOf('offline.token.B'),
+              'status': 'active',
+            },
           ],
-        );
+        });
 
     Future<void> prepareAndGoOffline(
       WidgetTester tester,
@@ -805,7 +809,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Prepare offline mode'));
       await tester.pumpAndSettle();
-      expect(find.text('Offline manifest loaded: 2 tickets'), findsOneWidget);
+      // kadenz#1823: an unsigned manifest still loads during rollout, but the
+      // snackbar says so rather than implying it was verified.
+      expect(find.textContaining('Offline manifest loaded: 2 tickets'), findsOneWidget);
+      expect(find.textContaining('not cryptographically verified'), findsOneWidget);
       await _flushSnack(tester);
 
       await tester.tap(find.byIcon(Icons.cloud_outlined));

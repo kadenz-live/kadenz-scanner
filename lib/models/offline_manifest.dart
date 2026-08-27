@@ -23,6 +23,22 @@ class ManifestEntry {
   Map<String, dynamic> toJson() => {'id': id, 'digest': digest, 'status': status};
 }
 
+/// How much authority a manifest carries (kadenz#1823, ADR-0055 §C).
+///
+/// Lives on the model rather than next to the verifier so that a manifest can
+/// never be held without its provenance travelling with it.
+enum ManifestTrust {
+  /// The whole document was verified against a pinned Ed25519 public key: the
+  /// admissible set, every entry status, and `valid_until` are server
+  /// assertions rather than local state.
+  signed,
+
+  /// Not verified — either the API does not sign yet, or it signs with a key
+  /// this build does not hold. Accepted only until this device has verified a
+  /// signed manifest at least once; see `ManifestVerifier`.
+  unsigned,
+}
+
 /// The offline-validation manifest for one event.
 ///
 /// The HMAC signing secret never reaches the device. Validation works by
@@ -36,12 +52,34 @@ class OfflineManifest {
     required this.generatedAt,
     required this.entries,
     this.validUntil,
+    this.eventState,
+    this.manifestVersion,
+    this.trust = ManifestTrust.unsigned,
   });
 
   final String eventId;
   final String eventTitle;
   final DateTime generatedAt;
   final List<ManifestEntry> entries;
+
+  /// Server-side event state: `open | cancelled | cutoff_reached`. Carried so
+  /// it is available to the offline decision; not yet gated on (kadenz#1823
+  /// follow-up). Cancelled and cutoff manifests already ship an empty
+  /// allow-list, so they admit nobody regardless.
+  final String? eventState;
+
+  /// Monotonic counter bumped by every cascade write-path on the server. Used
+  /// as a freshness oracle on the next online poll; carried, not yet gated on.
+  final int? manifestVersion;
+
+  /// Whether this document was verified (kadenz#1823, ADR-0055).
+  ///
+  /// Defaults to [ManifestTrust.unsigned] so anything constructed by hand — a
+  /// test, a legacy record replayed out of storage — is never silently treated
+  /// as verified. Trust has to be earned by going through `ManifestVerifier`.
+  final ManifestTrust trust;
+
+  bool get isSigned => trust == ManifestTrust.signed;
 
   /// Server-side offline-validity deadline (kadenz#1778).
   ///
@@ -110,7 +148,13 @@ class OfflineManifest {
   static String digestOf(String qrToken) =>
       sha256.convert(utf8.encode(qrToken)).toString();
 
-  factory OfflineManifest.fromJson(Map<String, dynamic> j) {
+  /// [trust] is required from the caller rather than inferred from the JSON,
+  /// because the presence of a `signature` key proves nothing on its own — only
+  /// `ManifestVerifier` knows whether it checked out.
+  factory OfflineManifest.fromJson(
+    Map<String, dynamic> j, {
+    ManifestTrust trust = ManifestTrust.unsigned,
+  }) {
     // Absent on pre-#1778 servers → null → hardStaleThreshold fallback.
     final rawValidUntil = j['valid_until'] as String?;
     return OfflineManifest(
@@ -123,6 +167,9 @@ class OfflineManifest {
           .toList(),
       validUntil:
           rawValidUntil == null ? null : DateTime.parse(rawValidUntil),
+      eventState: j['event_state'] as String?,
+      manifestVersion: j['manifest_version'] as int?,
+      trust: trust,
     );
   }
 
@@ -136,6 +183,8 @@ class OfflineManifest {
       'event_title': eventTitle,
       'generated_at': generatedAt.toIso8601String(),
       if (deadline != null) 'valid_until': deadline.toIso8601String(),
+      if (eventState != null) 'event_state': eventState,
+      if (manifestVersion != null) 'manifest_version': manifestVersion,
       'tickets': entries.map((e) => e.toJson()).toList(),
     };
   }

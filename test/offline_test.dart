@@ -2,8 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kadenz_scanner/models/offline_manifest.dart';
 import 'package:kadenz_scanner/models/queued_scan.dart';
 import 'package:kadenz_scanner/models/reconcile_result.dart';
+import 'package:kadenz_scanner/services/manifest_verifier.dart';
 import 'package:kadenz_scanner/services/offline_store.dart';
 import 'package:kadenz_scanner/services/offline_validator.dart';
+
+import 'support/manifest_fixtures.dart';
 
 OfflineManifest manifestWith(
   List<ManifestEntry> entries, {
@@ -250,13 +253,23 @@ void main() {
     });
 
     test('valid_until survives OfflineStore save/load', () async {
+      // kadenz#1823: the store now round-trips the wire document verbatim, so
+      // "does valid_until survive persistence" is asked of the same bytes the
+      // signature covers. Dropping it on persist would silently demote a
+      // server-expired manifest to the 12h fallback after a relaunch.
       final store = OfflineStore(InMemoryKeyValueStore());
-      final deadline = gen.add(const Duration(hours: 3));
-      await store.saveManifest(
-        manifestWith([entryFor('A.sig', id: 't1')], generatedAt: gen, validUntil: deadline),
+      final fixtures = await ManifestFixtures.create();
+      final verifier = ManifestVerifier(publicKeys: fixtures.pinnedKeys);
+      final raw = await fixtures.signed();
+
+      await store.saveRawManifest('evt-1', raw);
+      final loaded = await verifier.verify(
+        (await store.loadRawManifest('evt-1'))!,
+        hasSeenSignedManifest: true,
       );
-      final loaded = await store.loadManifest('evt-1');
-      expect(loaded!.validUntil!.toUtc(), deadline);
+
+      expect(loaded.verified, isTrue);
+      expect(loaded.manifest!.validUntil, DateTime.utc(2030, 1, 2, 6));
     });
   });
 
@@ -265,13 +278,59 @@ void main() {
 
     setUp(() => store = OfflineStore(InMemoryKeyValueStore()));
 
-    test('saves and loads a manifest by event id', () async {
-      final m = manifestWith([entryFor('A.sig', id: 't1')]);
-      await store.saveManifest(m);
-      final loaded = await store.loadManifest('evt-1');
-      expect(loaded, isNotNull);
-      expect(loaded!.entries.single.id, 't1');
-      expect(await store.loadManifest('other'), isNull);
+    test('saves and loads a manifest document by event id', () async {
+      final raw = ManifestFixtures.unsigned();
+      await store.saveRawManifest('evt-1', raw);
+
+      expect(await store.loadRawManifest('evt-1'), raw);
+      expect(await store.loadRawManifest('other'), isNull);
+    });
+
+    test('stores the wire document byte for byte, not a re-serialised object', () async {
+      // Re-serialising would drop the signature envelope and any field this
+      // build does not know about, so the stored copy could never be verified
+      // again. Load and fetch have to run the identical check.
+      final fixtures = await ManifestFixtures.create();
+      final raw = await fixtures.signed();
+
+      await store.saveRawManifest('evt-1', raw);
+
+      expect(await store.loadRawManifest('evt-1'), raw);
+    });
+
+    test('reads a pre-#1823 record written by an older build', () async {
+      // Upgrade path: the old build persisted the bare manifest object. It must
+      // still load, or an app update would brick a door that was already
+      // prepared for offline.
+      final legacy = ManifestFixtures.unsigned();
+      final kv = InMemoryKeyValueStore();
+      await kv.write('offline_manifest_evt-1', legacy);
+
+      final legacyStore = OfflineStore(kv);
+      final loaded = await legacyStore.loadRawManifest('evt-1');
+
+      expect(loaded, legacy);
+      final verified = await ManifestVerifier(publicKeys: const {})
+          .verify(loaded!, hasSeenSignedManifest: false);
+      expect(verified.accepted, isTrue, reason: 'a legacy record must still be usable during rollout');
+      expect(verified.verified, isFalse);
+    });
+
+    test('the signed-manifest ratchet starts open and only ever closes', () async {
+      expect(await store.hasSeenSignedManifest(), isFalse);
+
+      await store.markSignedManifestSeen();
+
+      expect(await store.hasSeenSignedManifest(), isTrue);
+    });
+
+    test('the ratchet is not scoped to one event', () async {
+      // It is a statement about the server, not about a door. Per-event scoping
+      // would reopen the downgrade window on every new event.
+      await store.markSignedManifestSeen();
+      await store.saveRawManifest('evt-2', ManifestFixtures.unsigned());
+
+      expect(await store.hasSeenSignedManifest(), isTrue);
     });
 
     test('enqueues scans and reports queued ticket ids', () async {

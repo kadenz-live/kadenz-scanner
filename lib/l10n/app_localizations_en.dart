@@ -228,6 +228,30 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String offlineSnackManifestRejected(String reason) {
+    return 'Manifest refused ($reason). The last valid manifest stays active.';
+  }
+
+  @override
+  String get manifestRejectionSignatureInvalid =>
+      'Invalid signature — the document was altered';
+
+  @override
+  String get manifestRejectionSignatureMissing =>
+      'No signature — the server does not sign';
+
+  @override
+  String get manifestRejectionSignatureUnknownKey =>
+      'Unknown signing key — app update required';
+
+  @override
+  String get manifestRejectionMalformed => 'Unreadable manifest';
+
+  @override
+  String get offlineManifestUnverified =>
+      'Manifest unsigned — not cryptographically verified yet';
+
+  @override
   String offlineSnackReconcileFailed(String error) {
     return 'Reconcile failed: $error';
   }
