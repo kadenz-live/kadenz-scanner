@@ -118,6 +118,23 @@ class AuthService {
     }
   }
 
+  /// Sign in and confirm — with the SERVER, not with a local role table — that
+  /// this operator may actually scan something.
+  ///
+  /// kadenz#1816: this method used to gate on the role string, refusing every
+  /// login whose `user.role` was not `'scanner'` or `'admin'`. The server enum
+  /// is `{ customer, scanner, global_admin }`, so `'admin'` matched nothing,
+  /// a global admin was rejected, and — the part that mattered — a door
+  /// operator holding an `einlass` membership on the account whose events they
+  /// work was rejected too. The single role that DID pass, `scanner`, was
+  /// exactly the one the API short-circuited to platform-wide scan authority.
+  /// The client gate was therefore what forced every door device onto
+  /// platform-wide authority and left the per-account model unexercised.
+  ///
+  /// The replacement is deliberately NOT a wider role list. The client does not
+  /// model authority at all any more: it asks the API whether this operator can
+  /// reach the scanner surface and takes that answer. When the authority model
+  /// changes again, no scanner release is required.
   Future<ScannerUser> signIn(String email, String password) async {
     final url = Uri.parse('${await baseUrl()}/api/v1/auth/sign_in');
     final res = await _http.post(
@@ -128,6 +145,11 @@ class AuthService {
         // OriginGuard escape hatch for native (non-browser) clients.
         // See web/api/app/controllers/concerns/origin_guard.rb.
         'X-Kadenz-Client': 'mobile-scanner/1.8.2',
+        // kadenz#1816 — bind this device to the session row being minted, so
+        // "revoke that phone" becomes an available operation instead of only
+        // "revoke that session" (which the device re-establishes on the next
+        // login). An API that predates the binding ignores the header.
+        'X-Device-Id': await deviceId(),
       },
       body: jsonEncode({'user': {'email': email, 'password': password}}),
     );
@@ -138,18 +160,60 @@ class AuthService {
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final user = ScannerUser.fromJson(body['user'] as Map<String, dynamic>);
-    if (user.role != 'scanner' && user.role != 'admin') {
-      throw AuthException('Account hat keine Scanner-Berechtigung.');
-    }
 
     final token = res.headers['authorization']?.replaceFirst(RegExp(r'^Bearer\s+'), '')
         ?? body['token'] as String?;
     if (token == null) throw AuthException('Kein Token erhalten.');
 
+    // Ask the server. Throws AuthException on a definitive refusal; nothing is
+    // persisted in that case, so a refused operator is not left holding a token.
+    await _assertScannerAccess(token);
+
     await _storage.write(key: _kToken, value: token);
     await _storage.write(key: _kUser, value: jsonEncode(user.toJson()));
     return user;
   }
+
+  /// Server-authoritative scan-access probe against the scanner event list.
+  ///
+  /// Only an explicit **403** is treated as "this account may not scan": that
+  /// is the API's coarse `require_scanner_access!` gate answering the question
+  /// we asked. Every other outcome — 5xx, timeout, malformed body, a transport
+  /// error — is NOT an authorization answer, and converting it into one would
+  /// lock door staff out during a server blip at the worst possible moment. We
+  /// let those through: the operator lands in the app and gets the real error
+  /// from the very same endpoint, with the retry affordances the event picker
+  /// already has.
+  ///
+  /// Cross-version: this endpoint exists and enforces the same coarse gate on
+  /// every API release the scanner has ever talked to, so a new client against
+  /// an older API behaves identically.
+  Future<void> _assertScannerAccess(String token) async {
+    final http.Response res;
+    try {
+      res = await _http.get(
+        Uri.parse('${await baseUrl()}/api/v1/scanner/events'),
+        headers: {
+          'Accept': 'application/json',
+          'X-Kadenz-Client': 'mobile-scanner/1.8.2',
+          'X-Device-Id': await deviceId(),
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(_scanAccessProbeTimeout);
+    } catch (_) {
+      return;
+    }
+
+    if (res.statusCode == 403) {
+      throw AuthException(
+        'Dieser Account darf keine Tickets scannen. '
+        'Die Kontoinhaberin oder der Kontoinhaber muss Dir eine Einlass-Berechtigung '
+        'für den jeweiligen Account geben.',
+      );
+    }
+  }
+
+  static const Duration _scanAccessProbeTimeout = Duration(seconds: 8);
 
   Future<void> signOut() async {
     await _storage.delete(key: _kToken);

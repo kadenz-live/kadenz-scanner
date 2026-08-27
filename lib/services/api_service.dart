@@ -113,12 +113,20 @@ class ApiService {
   static const String _kClientHeaderName = 'X-Kadenz-Client';
   static const String _kClientHeaderValue = 'mobile-scanner/1.8.2';
 
+  /// kadenz#1816 — every scanner request carries the device id, not just the
+  /// manifest fetch. The API binds it to the session at login and correlates it
+  /// on subsequent calls; it carries no authority of its own (nothing is
+  /// granted on the basis of its value), it is a revocation and forensic
+  /// handle. An API release that does not know the header ignores it.
+  static const String _kDeviceHeaderName = 'X-Device-Id';
+
   Future<Map<String, String>> _headers() async {
     final token = await _auth.token();
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       _kClientHeaderName: _kClientHeaderValue,
+      _kDeviceHeaderName: await _auth.deviceId(),
       if (token != null) 'Authorization': 'Bearer $token',
     };
   }
