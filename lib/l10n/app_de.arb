@@ -61,6 +61,12 @@
   "scannerAnyEvent": "Beliebiges Event",
   "scannerTooltipTorch": "Taschenlampe",
   "scannerTooltipCamera": "Kamera wechseln",
+  "scannerCameraPermissionDenied": "Kamerazugriff verweigert",
+  "scannerCameraPermissionHint": "Kamerazugriff in den Systemeinstellungen erlauben.",
+  "scannerCameraUnsupported": "Keine Kamera verfügbar",
+  "scannerCameraError": "Kamerafehler",
+  "scannerCameraFaultHint": "Code manuell eingeben.",
+  "scannerCameraRetry": "Erneut versuchen",
   "scannerNetworkError": "Netzwerkfehler",
   "scannerHudCheckedIn": "{used} / {total} eingecheckt",
   "@scannerHudCheckedIn": {

@@ -278,6 +278,42 @@ abstract class AppLocalizations {
   /// **'Kamera wechseln'**
   String get scannerTooltipCamera;
 
+  /// No description provided for @scannerCameraPermissionDenied.
+  ///
+  /// In de, this message translates to:
+  /// **'Kamerazugriff verweigert'**
+  String get scannerCameraPermissionDenied;
+
+  /// No description provided for @scannerCameraPermissionHint.
+  ///
+  /// In de, this message translates to:
+  /// **'Kamerazugriff in den Systemeinstellungen erlauben.'**
+  String get scannerCameraPermissionHint;
+
+  /// No description provided for @scannerCameraUnsupported.
+  ///
+  /// In de, this message translates to:
+  /// **'Keine Kamera verfügbar'**
+  String get scannerCameraUnsupported;
+
+  /// No description provided for @scannerCameraError.
+  ///
+  /// In de, this message translates to:
+  /// **'Kamerafehler'**
+  String get scannerCameraError;
+
+  /// No description provided for @scannerCameraFaultHint.
+  ///
+  /// In de, this message translates to:
+  /// **'Code manuell eingeben.'**
+  String get scannerCameraFaultHint;
+
+  /// No description provided for @scannerCameraRetry.
+  ///
+  /// In de, this message translates to:
+  /// **'Erneut versuchen'**
+  String get scannerCameraRetry;
+
   /// No description provided for @scannerNetworkError.
   ///
   /// In de, this message translates to:

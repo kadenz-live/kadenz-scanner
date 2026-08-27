@@ -112,6 +112,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get scannerTooltipCamera => 'Switch camera';
 
   @override
+  String get scannerCameraPermissionDenied => 'Camera access denied';
+
+  @override
+  String get scannerCameraPermissionHint =>
+      'Allow camera access in system settings.';
+
+  @override
+  String get scannerCameraUnsupported => 'No camera available';
+
+  @override
+  String get scannerCameraError => 'Camera error';
+
+  @override
+  String get scannerCameraFaultHint => 'Use manual code entry.';
+
+  @override
+  String get scannerCameraRetry => 'Retry';
+
+  @override
   String get scannerNetworkError => 'Network error';
 
   @override

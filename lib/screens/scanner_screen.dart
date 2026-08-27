@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../camera/mobile_scan_camera.dart';
+import '../camera/scan_camera.dart';
 import '../l10n/app_localizations.dart';
 import '../models/reconcile_result.dart';
 import '../models/scanner_event.dart';
@@ -31,7 +32,9 @@ class ScannerScreen extends StatefulWidget {
     required this.event,
     this.authService,
     ScanAudio? audio,
-  }) : audio = audio ?? _resolveDefaultAudio();
+    ScanCamera Function()? cameraFactory,
+  })  : audio = audio ?? _resolveDefaultAudio(),
+        cameraFactory = cameraFactory ?? MobileScanCamera.new;
   final ApiService api;
   final ScannerEvent? event;
   final AuthService? authService;
@@ -39,16 +42,19 @@ class ScannerScreen extends StatefulWidget {
   // of the real AudioPlayer-backed implementation. Production callers get
   // the real [ScanAudio] for free via the lazy default.
   final ScanAudio audio;
+  // Camera is injected as a factory (same shape as ScanAudio's playerFactory)
+  // because the screen owns the instance's lifetime: it builds one in
+  // initState and disposes it. Production gets [MobileScanCamera]; widget
+  // tests pass a fake that pushes payloads and faults on demand.
+  final ScanCamera Function() cameraFactory;
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateMixin {
-  final MobileScannerController _controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.normal,
-    facing: CameraFacing.back,
-  );
+class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserver {
+  late final ScanCamera _camera;
+  StreamSubscription<String>? _detections;
   bool _processing = false;
   ValidationResult? _last;
   DateTime? _lastShownAt;
@@ -66,7 +72,37 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
   @override
   void initState() {
     super.initState();
+    _camera = widget.cameraFactory();
+    _detections =
+        _camera.payloads.listen((payload) => unawaited(_onPayload(payload)));
+    WidgetsBinding.instance.addObserver(this);
+    // The camera may only be started once its preview is mounted — starting
+    // from initState would race the first frame and the plugin would report
+    // `controllerNotAttached`.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_camera.start());
+    });
     unawaited(_maybeInitOffline());
+  }
+
+  /// Mirror of the plugin's own lifecycle policy for an app-owned controller:
+  /// release the camera when the app goes inactive (a call, control centre,
+  /// the app switcher) and take it back on resume. Without this the preview
+  /// comes back frozen after a phone call — the door then stares at a still
+  /// image that never scans.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_camera.status.value.fault == ScanCameraFault.permissionDenied) return;
+    switch (state) {
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        return;
+      case AppLifecycleState.resumed:
+        unawaited(_camera.start());
+      case AppLifecycleState.inactive:
+        unawaited(_camera.stop());
+    }
   }
 
   Future<void> _maybeInitOffline() async {
@@ -92,24 +128,30 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
 
   @override
   void dispose() {
-    unawaited(_controller.dispose());
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_detections?.cancel());
+    _detections = null;
+    unawaited(_camera.dispose());
     _offline?.removeListener(_onOfflineChanged);
     _offline?.dispose();
     super.dispose();
   }
 
-  Future<void> _onDetect(BarcodeCapture capture) async {
+  /// One detection from the camera: a non-empty raw QR payload.
+  ///
+  /// Two guards stand between a detection and a door decision, in this order:
+  /// `_processing` (a validation is already in flight) and the 1.5 s
+  /// same-payload debounce (the operator is still holding the same phone in
+  /// front of the lens). Both are what stops a single ticket being burned
+  /// twice by the continuous detection stream.
+  Future<void> _onPayload(String raw) async {
     if (_processing) return;
 
-    final barcode = capture.barcodes.firstWhere(
-      (b) => b.rawValue != null && b.rawValue!.isNotEmpty,
-      orElse: () => const Barcode(rawValue: null, format: BarcodeFormat.unknown),
-    );
-    final raw = barcode.rawValue;
-    if (raw == null) return;
-
     // Debounce identical scans within 1.5s
-    if (raw == _lastPayload && _lastShownAt != null && DateTime.now().difference(_lastShownAt!) < const Duration(milliseconds: 1500)) {
+    final shownAt = _lastShownAt;
+    if (raw == _lastPayload &&
+        shownAt != null &&
+        DateTime.now().difference(shownAt) < const Duration(milliseconds: 1500)) {
       return;
     }
 
@@ -220,8 +262,19 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    // The whole screen is rebuilt from one camera snapshot: torch + facing
+    // affordances and the fault panel all read from the same [ScanCameraStatus]
+    // so they can never disagree about what the camera is doing.
+    return ValueListenableBuilder<ScanCameraStatus>(
+      valueListenable: _camera.status,
+      builder: (context, status, _) => _buildScreen(context, status),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context, ScanCameraStatus status) {
     final l = AppLocalizations.of(context)!;
     final offline = _offline;
+    final fault = status.fault;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.event?.title ?? l.scannerAnyEvent),
@@ -234,29 +287,44 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
               onPressed: _openManualEntry,
             ),
           IconButton(
-            icon: const Icon(Icons.flashlight_on_outlined),
+            key: const ValueKey('scanner_torch'),
+            icon: Icon(status.torch == ScanTorch.on
+                ? Icons.flashlight_on
+                : Icons.flashlight_off_outlined),
             tooltip: l.scannerTooltipTorch,
-            onPressed: () => _controller.toggleTorch(),
+            // A camera without a controllable torch (most front cameras) gets
+            // a disabled button rather than a control that silently does
+            // nothing when the operator taps it in the dark.
+            onPressed: status.torch == ScanTorch.unavailable
+                ? null
+                : () => unawaited(_camera.toggleTorch()),
           ),
           IconButton(
-            icon: const Icon(Icons.cameraswitch_outlined),
+            key: const ValueKey('scanner_camera_switch'),
+            icon: Icon(status.facing == ScanCameraFacing.front
+                ? Icons.camera_front_outlined
+                : Icons.cameraswitch_outlined),
             tooltip: l.scannerTooltipCamera,
-            onPressed: () => _controller.switchCamera(),
+            onPressed: () => unawaited(_camera.switchCamera()),
           ),
         ],
       ),
       body: Stack(
         children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
-          Center(
-            child: Container(
-              width: 260, height: 260,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 3),
-                borderRadius: BorderRadius.circular(20),
+          if (fault == null)
+            _camera.buildPreview(context)
+          else
+            _cameraFaultPanel(context, fault),
+          if (fault == null)
+            Center(
+              child: Container(
+                width: 260, height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 3),
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
             ),
-          ),
           Positioned(
             top: 0, left: 0, right: 0,
             child: SafeArea(
@@ -282,6 +350,72 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Blocking panel shown in place of the preview when the camera cannot run.
+  ///
+  /// Door-staff terse: what is wrong, the one thing that fixes it, one button.
+  /// Manual entry stays reachable in the app bar throughout, so a denied
+  /// camera never means a closed door.
+  Widget _cameraFaultPanel(BuildContext context, ScanCameraFault fault) {
+    final l = AppLocalizations.of(context)!;
+    final (String title, String hint) = switch (fault) {
+      ScanCameraFault.permissionDenied => (
+          l.scannerCameraPermissionDenied,
+          l.scannerCameraPermissionHint,
+        ),
+      ScanCameraFault.unsupported => (
+          l.scannerCameraUnsupported,
+          l.scannerCameraFaultHint,
+        ),
+      ScanCameraFault.unknown => (
+          l.scannerCameraError,
+          l.scannerCameraFaultHint,
+        ),
+    };
+    return Semantics(
+      key: const ValueKey('scanner_camera_fault'),
+      container: true,
+      liveRegion: true,
+      label: '$title. $hint',
+      child: ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.no_photography_outlined,
+                    color: Colors.white70, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  hint,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  key: const ValueKey('scanner_camera_retry'),
+                  onPressed: () => unawaited(_camera.start()),
+                  child: Text(l.scannerCameraRetry),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -469,41 +603,49 @@ class _ScannerScreenState extends State<ScannerScreen> with TickerProviderStateM
     final icon = r.ok ? Icons.check_circle : (r.status == 'already_used' ? Icons.error : Icons.cancel);
     final label = scannerStatusLabel(r, AppLocalizations.of(context)!);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 16, spreadRadius: 0)],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white, size: 56),
-          const SizedBox(width: 16),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label,
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              if (r.eventTitle.isNotEmpty)
-                Text(r.eventTitle, style: const TextStyle(color: Colors.white)),
-              if (r.holderName.isNotEmpty || r.ticketTypeName.isNotEmpty)
-                Text('${r.ticketTypeName}${r.holderName.isNotEmpty ? " · ${r.holderName}" : ""}',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.85))),
-              if (r.code.isNotEmpty)
-                Text(r.code, style: const TextStyle(color: Colors.white, fontFamily: 'monospace')),
-              if (r.message.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(r.message, style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
-                ),
-            ],
-          )),
-        ],
+    // The panel is colour-coded for sighted operators; the live region makes
+    // the same verdict reach VoiceOver / TalkBack without a focus change.
+    return Semantics(
+      key: const ValueKey('scanner_result'),
+      container: true,
+      liveRegion: true,
+      label: '$label${r.message.isNotEmpty ? '. ${r.message}' : ''}',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 16, spreadRadius: 0)],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 56),
+            const SizedBox(width: 16),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                if (r.eventTitle.isNotEmpty)
+                  Text(r.eventTitle, style: const TextStyle(color: Colors.white)),
+                if (r.holderName.isNotEmpty || r.ticketTypeName.isNotEmpty)
+                  Text('${r.ticketTypeName}${r.holderName.isNotEmpty ? " · ${r.holderName}" : ""}',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.85))),
+                if (r.code.isNotEmpty)
+                  Text(r.code, style: const TextStyle(color: Colors.white, fontFamily: 'monospace')),
+                if (r.message.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(r.message, style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
+                  ),
+              ],
+            )),
+          ],
+        ),
       ),
     );
   }
