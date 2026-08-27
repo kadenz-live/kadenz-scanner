@@ -13,6 +13,7 @@ import '../models/validation_result.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../audio/scan_audio.dart';
+import '../services/manifest_verifier.dart';
 import '../services/offline_controller.dart';
 import 'conflict_list_screen.dart';
 import 'manual_entry_dialog.dart';
@@ -219,11 +220,30 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     if (offline == null) return;
     try {
       await offline.prepareOffline();
-      _snack(l.offlineSnackManifestLoaded(offline.manifestTicketCount));
+      if (!mounted) return;
+      _snack(offline.isManifestVerified
+          ? l.offlineSnackManifestLoaded(offline.manifestTicketCount)
+          : '${l.offlineSnackManifestLoaded(offline.manifestTicketCount)} — ${l.offlineManifestUnverified}');
+    } on ManifestRejectedException catch (e) {
+      // kadenz#1823: the refused manifest was neither stored nor installed, so
+      // a door that was already prepared is still prepared. Name the reason —
+      // "the document was altered" and "this build does not hold the key" call
+      // for very different responses from the operator.
+      if (!mounted) return;
+      _snack(l.offlineSnackManifestRejected(_rejectionLabel(l, e.reason)));
     } catch (e) {
+      if (!mounted) return;
       _snack(l.offlineSnackSyncFailed(e.toString()));
     }
   }
+
+  String _rejectionLabel(AppLocalizations l, ManifestRejection reason) =>
+      switch (reason) {
+        ManifestRejection.signatureInvalid => l.manifestRejectionSignatureInvalid,
+        ManifestRejection.signatureMissing => l.manifestRejectionSignatureMissing,
+        ManifestRejection.signatureUnknownKey => l.manifestRejectionSignatureUnknownKey,
+        ManifestRejection.malformed => l.manifestRejectionMalformed,
+      };
 
   Future<void> _reconcile() async {
     final l = AppLocalizations.of(context)!;

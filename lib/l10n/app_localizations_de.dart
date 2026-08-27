@@ -228,6 +228,30 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String offlineSnackManifestRejected(String reason) {
+    return 'Manifest abgelehnt ($reason). Das zuletzt gültige Manifest bleibt aktiv.';
+  }
+
+  @override
+  String get manifestRejectionSignatureInvalid =>
+      'Signatur ungültig – Dokument wurde verändert';
+
+  @override
+  String get manifestRejectionSignatureMissing =>
+      'Keine Signatur – Server signiert nicht';
+
+  @override
+  String get manifestRejectionSignatureUnknownKey =>
+      'Unbekannter Signaturschlüssel – App-Update nötig';
+
+  @override
+  String get manifestRejectionMalformed => 'Unlesbares Manifest';
+
+  @override
+  String get offlineManifestUnverified =>
+      'Manifest unsigniert – noch nicht kryptografisch geprüft';
+
+  @override
   String offlineSnackReconcileFailed(String error) {
     return 'Abgleich fehlgeschlagen: $error';
   }

@@ -8,6 +8,40 @@ project aims to follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The offline manifest is now verified before any of it is trusted. It carries
+  a detached Ed25519 signature covering the whole document — the admissible
+  set, every entry status, and the `valid_until` the scanner has honoured over
+  its own 12-hour constant since kadenz#1778. Until now all of that arrived
+  unauthenticated and sat in `SharedPreferences` on a device door staff hold,
+  so the fields the offline admit decision actually turns on were editable
+  local state. The signature is over the exact bytes the server produced, so it
+  cannot cover only part of the document; the app reads the manifest out of the
+  signed payload and ignores the plain body. Private keys never leave the API.
+  See kadenz#1823 / ADR-0055.
+
+  Three deliberate choices in how it fails:
+
+  - **A refused manifest never evicts the one already in hand.** A door holding
+    a valid manifest is not bricked by a bad one arriving; it keeps admitting
+    until that manifest legitimately expires, and the operator is told the sync
+    was refused and why. Clearing on rejection would hand anyone who can put one
+    bad response in front of the device the ability to shut the door.
+  - **An unverifiable manifest is tolerated exactly once per device.** During
+    rollout a scanner on this build may meet an API whose signing key is not
+    provisioned yet; refusing there would take doors down for an ordering
+    problem. The tolerance is closed by a one-way ratchet the first time the
+    device verifies anything, and never reopens — without it, "tolerate
+    unsigned" would be a permanent downgrade available to anyone who strips a
+    field.
+  - **A key we do not hold is not treated as tampering.** Key ids are
+    fingerprints of the key itself, so a server signing with something this
+    build has not pinned reads as "unknown key" (soft, ride out on the last
+    known good) rather than "bad signature" (reject). A configuration mismatch
+    cannot present as an attack.
+
+  The stored manifest is re-verified on every load, not only at sync: local
+  storage is not a trust boundary.
+
 - Login no longer gates on the user's role string. The old check admitted only
   `'scanner'` or `'admin'`, which meant a `global_admin` could not sign in, the
   server never emits `'admin'` at all, and — the part that mattered — a door

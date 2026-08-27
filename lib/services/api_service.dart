@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../models/offline_manifest.dart';
 import '../models/queued_scan.dart';
 import '../models/reconcile_result.dart';
 import '../models/scanner_event.dart';
@@ -87,11 +86,19 @@ class ApiService {
 
   /// Pre-sync the offline manifest for an event. The signing secret stays
   /// server-side: the manifest carries SHA-256 digests, not the secret.
-  Future<OfflineManifest> manifest(String eventId) async {
+  ///
+  /// Returns the **undecoded wire document** (kadenz#1823). Parsing here would
+  /// mean the signature envelope is discarded before anything has checked it,
+  /// and the bytes the signature covers would no longer exist by the time the
+  /// caller wanted to verify them. `ManifestVerifier` owns the decode.
+  Future<String> manifestDocument(String eventId) async {
     final url = Uri.parse('${await _auth.baseUrl()}/api/v1/scanner/events/$eventId/manifest');
     final res = await http.get(url, headers: await _headers());
     _ensureOk(res);
-    return OfflineManifest.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    // utf8-decode the raw bytes rather than trusting res.body: the signature is
+    // over exactly these bytes, and http's default latin-1 fallback for a
+    // missing charset would corrupt a non-ASCII event title.
+    return utf8.decode(res.bodyBytes);
   }
 
   /// Push the offline scan queue back to the server for reconciliation.

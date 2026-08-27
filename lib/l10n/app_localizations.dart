@@ -476,6 +476,42 @@ abstract class AppLocalizations {
   /// **'Sync fehlgeschlagen: {error}'**
   String offlineSnackSyncFailed(String error);
 
+  /// No description provided for @offlineSnackManifestRejected.
+  ///
+  /// In de, this message translates to:
+  /// **'Manifest abgelehnt ({reason}). Das zuletzt gültige Manifest bleibt aktiv.'**
+  String offlineSnackManifestRejected(String reason);
+
+  /// No description provided for @manifestRejectionSignatureInvalid.
+  ///
+  /// In de, this message translates to:
+  /// **'Signatur ungültig – Dokument wurde verändert'**
+  String get manifestRejectionSignatureInvalid;
+
+  /// No description provided for @manifestRejectionSignatureMissing.
+  ///
+  /// In de, this message translates to:
+  /// **'Keine Signatur – Server signiert nicht'**
+  String get manifestRejectionSignatureMissing;
+
+  /// No description provided for @manifestRejectionSignatureUnknownKey.
+  ///
+  /// In de, this message translates to:
+  /// **'Unbekannter Signaturschlüssel – App-Update nötig'**
+  String get manifestRejectionSignatureUnknownKey;
+
+  /// No description provided for @manifestRejectionMalformed.
+  ///
+  /// In de, this message translates to:
+  /// **'Unlesbares Manifest'**
+  String get manifestRejectionMalformed;
+
+  /// No description provided for @offlineManifestUnverified.
+  ///
+  /// In de, this message translates to:
+  /// **'Manifest unsigniert – noch nicht kryptografisch geprüft'**
+  String get offlineManifestUnverified;
+
   /// No description provided for @offlineSnackReconcileFailed.
   ///
   /// In de, this message translates to:

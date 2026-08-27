@@ -132,6 +132,17 @@
       "error": { "type": "String" }
     }
   },
+  "offlineSnackManifestRejected": "Manifest abgelehnt ({reason}). Das zuletzt gültige Manifest bleibt aktiv.",
+  "@offlineSnackManifestRejected": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+  "manifestRejectionSignatureInvalid": "Signatur ungültig – Dokument wurde verändert",
+  "manifestRejectionSignatureMissing": "Keine Signatur – Server signiert nicht",
+  "manifestRejectionSignatureUnknownKey": "Unbekannter Signaturschlüssel – App-Update nötig",
+  "manifestRejectionMalformed": "Unlesbares Manifest",
+  "offlineManifestUnverified": "Manifest unsigniert – noch nicht kryptografisch geprüft",
   "offlineSnackReconcileFailed": "Abgleich fehlgeschlagen: {error}",
   "@offlineSnackReconcileFailed": {
     "placeholders": {

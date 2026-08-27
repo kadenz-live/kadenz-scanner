@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/offline_manifest.dart';
 import '../models/queued_scan.dart';
 
 /// Minimal key-value abstraction so the offline store is unit-testable
@@ -50,14 +49,58 @@ class OfflineStore {
   String _manifestKey(String eventId) => 'offline_manifest_$eventId';
   String _queueKey(String eventId) => 'offline_queue_$eventId';
 
-  Future<void> saveManifest(OfflineManifest manifest) =>
-      _kv.write(_manifestKey(manifest.eventId), jsonEncode(manifest.toJson()));
+  /// Set once this device has ever verified a signed manifest (kadenz#1823).
+  ///
+  /// Deliberately **not** namespaced by event: it is a statement about the
+  /// server this device talks to, not about one door. Namespacing it per event
+  /// would reopen the downgrade window on every new event.
+  static const String _signedSeenKey = 'manifest_signature_seen';
 
-  Future<OfflineManifest?> loadManifest(String eventId) async {
+  /// Storage schema of a manifest record. Records without it are pre-#1823 and
+  /// hold the parsed manifest directly.
+  static const String _schemaKey = 'schema';
+  static const int _schemaVersion = 2;
+
+  /// Persist the manifest as the **exact bytes the server sent**.
+  ///
+  /// Not `manifest.toJson()`: re-serialising a parsed object would drop the
+  /// signature envelope and every field this build does not know about, so the
+  /// stored copy could never be verified again. Storing the wire document means
+  /// load and fetch run the identical verification, which is the only way "the
+  /// manifest on disk was not edited" can be a real claim rather than a
+  /// re-assertion of whatever was parsed at sync time.
+  Future<void> saveRawManifest(String eventId, String rawDocument) =>
+      _kv.write(_manifestKey(eventId), jsonEncode({_schemaKey: _schemaVersion, 'body': rawDocument}));
+
+  /// The stored wire document, or null when nothing is stored.
+  ///
+  /// A pre-#1823 record — written by an older build as a bare manifest object —
+  /// is handed back as-is. It has no signature, so it lands on the unsigned
+  /// branch of the verifier and is tolerated only while the ratchet is open.
+  /// That is what stops an app upgrade from bricking a prepared door.
+  Future<String?> loadRawManifest(String eventId) async {
     final raw = await _kv.read(_manifestKey(eventId));
     if (raw == null) return null;
-    return OfflineManifest.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (_) {
+      return raw;
+    }
+    if (decoded is Map<String, dynamic> && decoded[_schemaKey] == _schemaVersion) {
+      final body = decoded['body'];
+      return body is String ? body : null;
+    }
+    return raw;
   }
+
+  /// The one-way ratchet (ADR-0055 §C). Once true, an unverifiable manifest is
+  /// never accepted again on this device.
+  Future<bool> hasSeenSignedManifest() async =>
+      (await _kv.read(_signedSeenKey)) == 'true';
+
+  Future<void> markSignedManifestSeen() => _kv.write(_signedSeenKey, 'true');
 
   Future<List<QueuedScan>> loadQueue(String eventId) async {
     final raw = await _kv.read(_queueKey(eventId));
