@@ -35,12 +35,33 @@ class OfflineManifest {
     required this.eventTitle,
     required this.generatedAt,
     required this.entries,
+    this.validUntil,
   });
 
   final String eventId;
   final String eventTitle;
   final DateTime generatedAt;
   final List<ManifestEntry> entries;
+
+  /// Server-side offline-validity deadline (kadenz#1778).
+  ///
+  /// When present it is **authoritative in both directions** for the hard
+  /// staleness gate — see [isStaleHard]:
+  ///
+  ///  * server says expired  → stale, even if the manifest is younger than
+  ///    [hardStaleThreshold]. Refusing fails safe: worst case the operator is
+  ///    forced online; admitting from an expired manifest could let a
+  ///    revoked/refunded ticket through, which is unrecoverable at the door.
+  ///    **An expired manifest must NEVER admit.**
+  ///  * server says still valid → not stale, even past [hardStaleThreshold].
+  ///    That is the point of moving the policy server-side: the server knows
+  ///    event timing (e.g. multi-day events) and can extend or shorten the
+  ///    window without an app release.
+  ///
+  /// `null` when the server predates the field — [isStaleHard] then falls
+  /// back to the [hardStaleThreshold] constant (backward compatible across
+  /// one release cycle).
+  final DateTime? validUntil;
 
   /// Soft threshold: past this age the operator sees a prominent
   /// stale-manifest warning but scans still go through. Re-sync recommended.
@@ -51,10 +72,9 @@ class OfflineManifest {
   /// the last sync, so we force the operator back online rather than risk
   /// admitting a ticket that was revoked after the manifest was generated.
   ///
-  /// This is a conservative client-side constant applied to [generatedAt]
-  /// until the server emits an explicit `valid_until` — see the follow-up
-  /// note in the PR. When a server-side `valid_until` lands it should
-  /// override this constant.
+  /// Fallback only (kadenz#1778): applied to [generatedAt] when the server
+  /// did not ship a [validUntil]. When [validUntil] is present it is
+  /// authoritative and this constant is ignored — see [isStaleHard].
   static const Duration hardStaleThreshold = Duration(hours: 12);
 
   /// Index by digest for O(1) lookup during scanning.
@@ -70,26 +90,53 @@ class OfflineManifest {
   /// Past the soft threshold: warn the operator, still admit.
   bool isStaleSoft([DateTime? now]) => ageAt(now) >= softStaleThreshold;
 
-  /// Past the hard threshold: refuse offline admits, force online.
-  bool isStaleHard([DateTime? now]) => ageAt(now) >= hardStaleThreshold;
+  /// Hard staleness gate: refuse offline admits, force online.
+  ///
+  /// Authority order (kadenz#1778, see [validUntil]): a server-provided
+  /// `valid_until` wins over the [hardStaleThreshold] constant in both
+  /// directions. The deadline itself counts as expired (`now >= validUntil`)
+  /// — at the expiry instant the manifest must already refuse, matching the
+  /// server's `valid_until <= now` semantics. An expired manifest must
+  /// NEVER admit.
+  bool isStaleHard([DateTime? now]) {
+    final deadline = validUntil;
+    final reference = (now ?? DateTime.now()).toUtc();
+    if (deadline != null) {
+      return !reference.isBefore(deadline.toUtc());
+    }
+    return ageAt(now) >= hardStaleThreshold;
+  }
 
   static String digestOf(String qrToken) =>
       sha256.convert(utf8.encode(qrToken)).toString();
 
-  factory OfflineManifest.fromJson(Map<String, dynamic> j) => OfflineManifest(
-        eventId: j['event_id'] as String,
-        eventTitle: (j['event_title'] as String?) ?? '',
-        generatedAt: DateTime.parse(j['generated_at'] as String),
-        entries: ((j['tickets'] as List?) ?? const [])
-            .cast<Map<String, dynamic>>()
-            .map(ManifestEntry.fromJson)
-            .toList(),
-      );
+  factory OfflineManifest.fromJson(Map<String, dynamic> j) {
+    // Absent on pre-#1778 servers → null → hardStaleThreshold fallback.
+    final rawValidUntil = j['valid_until'] as String?;
+    return OfflineManifest(
+      eventId: j['event_id'] as String,
+      eventTitle: (j['event_title'] as String?) ?? '',
+      generatedAt: DateTime.parse(j['generated_at'] as String),
+      entries: ((j['tickets'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(ManifestEntry.fromJson)
+          .toList(),
+      validUntil:
+          rawValidUntil == null ? null : DateTime.parse(rawValidUntil),
+    );
+  }
 
-  Map<String, dynamic> toJson() => {
-        'event_id': eventId,
-        'event_title': eventTitle,
-        'generated_at': generatedAt.toIso8601String(),
-        'tickets': entries.map((e) => e.toJson()).toList(),
-      };
+  Map<String, dynamic> toJson() {
+    // valid_until MUST round-trip through the offline store: dropping it on
+    // persist would silently demote a server-expired manifest to the 12h
+    // fallback after an app relaunch — the unsafe direction.
+    final deadline = validUntil;
+    return {
+      'event_id': eventId,
+      'event_title': eventTitle,
+      'generated_at': generatedAt.toIso8601String(),
+      if (deadline != null) 'valid_until': deadline.toIso8601String(),
+      'tickets': entries.map((e) => e.toJson()).toList(),
+    };
+  }
 }
