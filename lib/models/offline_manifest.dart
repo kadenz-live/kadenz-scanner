@@ -45,6 +45,27 @@ enum ManifestTrust {
 /// hashing the scanned QR token (SHA-256) and matching it against the
 /// precomputed [ManifestEntry.digest] — a forged token cannot produce a
 /// matching digest without the server-side secret.
+///
+/// ## The QR token is opaque to this app — keep it that way (kadenz#1827)
+///
+/// The server signs QR tokens from a **keyring**: each token names the key
+/// that signed it (an optional `k` claim inside the signed payload, absent for
+/// key 1), so the signing secret can be rotated without invalidating tickets
+/// already sitting in wallets. See kadenz ADR-0055.
+///
+/// The client survives that entirely because it never looks *inside* a token:
+/// online it forwards the scanned string verbatim to `/validate`, offline it
+/// hashes the whole string with [digestOf]. Adding a claim changes the token's
+/// bytes, and therefore its digest — which the server recomputes from the same
+/// bytes, so the two still agree.
+///
+/// That is a contract, not a coincidence. Do **not** teach this app to
+/// base64-decode a token, parse its JSON, or read `eid`/`tid`/`v`/`k` out of
+/// it — not for a display label, not to pre-filter a scan, not as an
+/// optimisation. Doing so re-couples the client to the payload format and
+/// turns a server-side key rotation into a door outage that only shows up at
+/// the gate. Ticket identity comes from [ManifestEntry.id] offline and from
+/// the server response online.
 class OfflineManifest {
   const OfflineManifest({
     required this.eventId,
@@ -145,6 +166,12 @@ class OfflineManifest {
     return ageAt(now) >= hardStaleThreshold;
   }
 
+  /// SHA-256 of the **entire** scanned token, byte for byte.
+  ///
+  /// The whole string is the input — prefix, separator, signature and any
+  /// future claim. Hashing a substring (say, only the payload half) would
+  /// break the moment the server changed anything the digest is supposed to
+  /// cover, and would drop the signature out of the hashed material.
   static String digestOf(String qrToken) =>
       sha256.convert(utf8.encode(qrToken)).toString();
 

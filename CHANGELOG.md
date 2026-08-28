@@ -6,6 +6,20 @@ project aims to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The scanned QR token is now documented and test-locked as **opaque** to this
+  app. The API signs tokens from a keyring and stamps the signing-key id into
+  the payload so the signing secret can finally be rotated without invalidating
+  tickets already in wallets (kadenz#1827 / ADR-0055). No behaviour change was
+  needed here — online the token is forwarded verbatim, offline the whole
+  string is SHA-256'd against the manifest digest, so a token carrying a key id
+  already worked. That is now a contract with regression tests behind it rather
+  than a happy accident: `test/token_opacity_test.dart` verifies both token
+  shapes against server-computed digests, including an event holding tickets
+  from both sides of a rotation. A future change that parses the token
+  client-side would fail there instead of at a door.
+
 ### Security
 
 - The offline manifest is now verified before any of it is trusted. It carries

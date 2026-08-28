@@ -91,6 +91,11 @@ class ApiService {
   /// mean the signature envelope is discarded before anything has checked it,
   /// and the bytes the signature covers would no longer exist by the time the
   /// caller wanted to verify them. `ManifestVerifier` owns the decode.
+  ///
+  /// The per-ticket digests inside are taken over the full signed QR token, so
+  /// they track any change to that token's shape — including the signing-key
+  /// id the server added in kadenz#1827. Nothing on this path needs to know
+  /// about it; see [OfflineManifest] on why it must stay that way.
   Future<String> manifestDocument(String eventId) async {
     final url = Uri.parse('${await _auth.baseUrl()}/api/v1/scanner/events/$eventId/manifest');
     final res = await http.get(url, headers: await _headers());
