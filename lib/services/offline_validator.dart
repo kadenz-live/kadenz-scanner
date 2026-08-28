@@ -33,6 +33,10 @@ class OfflineScanOutcome {
 /// and matched against the manifest digest. Tickets already scanned in this
 /// offline session are rejected locally to prevent same-device double entry.
 ///
+/// The token is treated as an opaque string and is never parsed — see
+/// [OfflineManifest] for why that is a contract the server-side signing
+/// keyring (kadenz#1827 / ADR-0055) depends on.
+///
 /// Staleness gate: a manifest cannot observe revoke/refund events that happen
 /// after it was generated. Once [OfflineManifest.isStaleHard] trips — the
 /// server-side [OfflineManifest.validUntil] when present (authoritative,
